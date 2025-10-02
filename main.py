@@ -167,16 +167,22 @@ def get_sp500_symbols():
 @st.cache_data(ttl=3600)
 def download_sp500_data(symbols, period="2y"):
     """Download historical data for S&P 500 stocks."""
-    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True, multi_level_index=False, auto_adjust=True)
+    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True)
     
     prices = pd.DataFrame()
     for symbol in symbols:
         try:
             if len(symbols) == 1:
-                prices[symbol] = data['Close']
+                if 'Adj Close' in data.columns:
+                    prices[symbol] = data['Adj Close']
+                else:
+                    prices[symbol] = data['Close']
             else:
-                prices[symbol] = data[symbol]['Close']
-        except (KeyError, TypeError):
+                if 'Adj Close' in data[symbol].columns:
+                    prices[symbol] = data[symbol]['Adj Close']
+                else:
+                    prices[symbol] = data[symbol]['Close']
+        except (KeyError, TypeError, AttributeError):
             continue
     
     prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
@@ -220,9 +226,13 @@ def load_stock_data(symbol, period="2y"):
     try:
         data = yf.download(symbol, period=period, progress=False)
         if len(data) > 0:
-            return data['Adj Close']
+            if 'Adj Close' in data.columns:
+                return data['Adj Close']
+            elif 'Close' in data.columns:
+                return data['Close']
         return None
-    except:
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
         return None
 
 @st.cache_data(ttl=3600)
