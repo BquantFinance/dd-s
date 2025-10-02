@@ -167,15 +167,15 @@ def get_sp500_symbols():
 @st.cache_data(ttl=3600)
 def download_sp500_data(symbols, period="2y"):
     """Download historical data for S&P 500 stocks."""
-    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True)
+    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True, multi_level_index=False, auto_adjust=True)
     
     prices = pd.DataFrame()
     for symbol in symbols:
         try:
             if len(symbols) == 1:
-                prices[symbol] = data['Adj Close']
+                prices[symbol] = data['Close']
             else:
-                prices[symbol] = data[symbol]['Adj Close']
+                prices[symbol] = data[symbol]['Close']
         except (KeyError, TypeError):
             continue
     
