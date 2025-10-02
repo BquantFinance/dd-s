@@ -167,30 +167,20 @@ def get_sp500_symbols():
 @st.cache_data(ttl=3600)
 def download_sp500_data(symbols, period="2y"):
     """Download historical data for S&P 500 stocks."""
-    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True, auto_adjust=True)
-    
     prices = pd.DataFrame()
     
-    if len(symbols) == 1:
-        symbol = symbols[0]
+    # Use Ticker.history() for more reliable downloads
+    for symbol in symbols:
         try:
-            if isinstance(data, pd.DataFrame):
-                if 'Close' in data.columns:
-                    prices[symbol] = data['Close']
-                elif len(data.columns) > 0:
-                    prices[symbol] = data.iloc[:, 0]
-        except (KeyError, TypeError, AttributeError):
-            pass
-    else:
-        for symbol in symbols:
-            try:
-                if 'Close' in data[symbol].columns:
-                    prices[symbol] = data[symbol]['Close']
-                elif len(data[symbol].columns) > 0:
-                    prices[symbol] = data[symbol].iloc[:, 0]
-            except (KeyError, TypeError, AttributeError):
-                continue
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period=period)
+            
+            if data is not None and len(data) > 0 and 'Close' in data.columns:
+                prices[symbol] = data['Close']
+        except Exception:
+            continue
     
+    # Remove columns with too many NaN values
     prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
     return prices
 
@@ -230,29 +220,26 @@ def analyze_sp500(period="2y"):
 def load_stock_data(symbol, period="2y"):
     """Load stock data from yfinance"""
     try:
-        data = yf.download(symbol, period=period, progress=False, auto_adjust=True)
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period=period)
         
         if data is None or len(data) == 0:
+            st.warning(f"No data returned for {symbol}")
             return None
         
-        if isinstance(data, pd.DataFrame):
-            if 'Close' in data.columns:
-                result = data['Close']
-            elif len(data.columns) > 0:
-                result = data.iloc[:, 0]
+        if 'Close' in data.columns:
+            result = data['Close']
+            if isinstance(result, pd.Series) and len(result) > 10:
+                return result.dropna()
             else:
+                st.warning(f"Not enough data for {symbol}: {len(result) if isinstance(result, pd.Series) else 0} rows")
                 return None
-        elif isinstance(data, pd.Series):
-            result = data
         else:
+            st.warning(f"No 'Close' column found for {symbol}. Columns: {data.columns.tolist()}")
             return None
         
-        if isinstance(result, pd.Series) and len(result) > 0:
-            return result.dropna()
-        
-        return None
-        
-    except Exception:
+    except Exception as e:
+        st.error(f"Error loading {symbol}: {str(e)}")
         return None
 
 @st.cache_data(ttl=3600)
@@ -543,25 +530,30 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    if analysis_type == "Individual Stock" and (analyze_button or 'last_single_analysis' in st.session_state):
-        if analyze_button or st.session_state.get('last_symbol') == symbol:
+    if analysis_type == "Individual Stock":
+        if analyze_button:
             with st.spinner(f"Analyzing {symbol}..."):
                 stats = analyze_stock(symbol, period)
                 
                 if stats is None:
                     st.error(f"❌ Unable to load data for {symbol}. Please check the symbol and try again.")
-                    return
-                
-                st.session_state.last_single_analysis = stats
-                st.session_state.last_symbol = symbol
-                
-                display_single_stock_analysis(stats)
+                else:
+                    st.session_state.last_single_analysis = stats
+                    st.session_state.last_symbol = symbol
+                    st.session_state.last_period = period
+                    display_single_stock_analysis(stats)
+        elif 'last_single_analysis' in st.session_state and st.session_state.get('last_symbol') == symbol and st.session_state.get('last_period') == period:
+            display_single_stock_analysis(st.session_state.last_single_analysis)
     
-    elif analysis_type == "Full S&P 500" and (analyze_button or 'last_sp500_analysis' in st.session_state):
-        with st.spinner("Analyzing S&P 500... This may take a few minutes."):
-            summary_df, prices = analyze_sp500(period)
-            st.session_state.last_sp500_analysis = (summary_df, prices)
-            
+    elif analysis_type == "Full S&P 500":
+        if analyze_button:
+            with st.spinner("Analyzing S&P 500... This may take a few minutes."):
+                summary_df, prices = analyze_sp500(period)
+                st.session_state.last_sp500_analysis = (summary_df, prices)
+                st.session_state.last_sp500_period = period
+                display_sp500_analysis(summary_df, prices, period)
+        elif 'last_sp500_analysis' in st.session_state and st.session_state.get('last_sp500_period') == period:
+            summary_df, prices = st.session_state.last_sp500_analysis
             display_sp500_analysis(summary_df, prices, period)
     
     else:
