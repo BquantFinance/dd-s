@@ -172,7 +172,6 @@ def download_sp500_data(symbols, period="2y"):
     prices = pd.DataFrame()
     
     if len(symbols) == 1:
-        # Single symbol case
         symbol = symbols[0]
         try:
             if isinstance(data, pd.DataFrame):
@@ -183,7 +182,6 @@ def download_sp500_data(symbols, period="2y"):
         except (KeyError, TypeError, AttributeError):
             pass
     else:
-        # Multiple symbols case
         for symbol in symbols:
             try:
                 if 'Close' in data[symbol].columns:
@@ -192,18 +190,6 @@ def download_sp500_data(symbols, period="2y"):
                     prices[symbol] = data[symbol].iloc[:, 0]
             except (KeyError, TypeError, AttributeError):
                 continue
-    
-    prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
-    return prices = data['Adj Close']
-                else:
-                    prices[symbol] = data['Close']
-            else:
-                if 'Adj Close' in data[symbol].columns:
-                    prices[symbol] = data[symbol]['Adj Close']
-                else:
-                    prices[symbol] = data[symbol]['Close']
-        except (KeyError, TypeError, AttributeError):
-            continue
     
     prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
     return prices
@@ -244,19 +230,15 @@ def analyze_sp500(period="2y"):
 def load_stock_data(symbol, period="2y"):
     """Load stock data from yfinance"""
     try:
-        # Download with auto_adjust=True to get simpler structure
         data = yf.download(symbol, period=period, progress=False, auto_adjust=True)
         
-        # Check if data was downloaded
         if data is None or len(data) == 0:
             return None
         
-        # For auto_adjust=True, yfinance returns 'Close' directly
         if isinstance(data, pd.DataFrame):
             if 'Close' in data.columns:
                 result = data['Close']
             elif len(data.columns) > 0:
-                # Take the first numeric column
                 result = data.iloc[:, 0]
             else:
                 return None
@@ -265,14 +247,12 @@ def load_stock_data(symbol, period="2y"):
         else:
             return None
         
-        # Ensure it's a Series and has data
         if isinstance(result, pd.Series) and len(result) > 0:
             return result.dropna()
         
         return None
         
-    except Exception as e:
-        # Silently fail and return None
+    except Exception:
         return None
 
 @st.cache_data(ttl=3600)
@@ -280,17 +260,14 @@ def analyze_stock(symbol, period="2y"):
     """Analyze a single stock"""
     prices = load_stock_data(symbol, period)
     
-    # Check if prices loaded successfully
     if prices is None:
         return None
     
-    # Check if prices is a Series and has data
     if not isinstance(prices, pd.Series) or len(prices) < 10:
         return None
     
     returns = prices.pct_change().dropna()
     
-    # Check if returns has enough data
     if len(returns) < 10:
         return None
     
@@ -324,14 +301,6 @@ st.markdown("""
         border: 1px solid #262a33;
     }
     
-    .metric-card {
-        background: linear-gradient(135deg, #1a1d26 0%, #262a33 100%);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #2d323e;
-        margin: 10px 0;
-    }
-    
     h1, h2, h3 {
         color: #ffffff;
         font-weight: 600;
@@ -354,17 +323,6 @@ st.markdown("""
     .stTabs [aria-selected="true"] {
         background-color: #262a33;
         color: #ffffff;
-    }
-    
-    div[data-testid="stSidebarNav"] {
-        background-color: #0e1117;
-    }
-    
-    .plot-container {
-        background-color: #1a1d26;
-        border-radius: 12px;
-        padding: 15px;
-        border: 1px solid #262a33;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -538,12 +496,10 @@ def create_top_performers_chart(summary_df, metric='Max Drawdown (%)', n=20, asc
 # ==================== MAIN APP ====================
 
 def main():
-    # Header
     st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>📉 S&P 500 Drawdown Analysis</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #8b92a8; margin-top: 5px;'>Comprehensive risk analysis for the entire market</p>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # Sidebar
     with st.sidebar:
         st.markdown("### Configuration")
         
@@ -587,7 +543,6 @@ def main():
         </div>
         """, unsafe_allow_html=True)
     
-    # Main content
     if analysis_type == "Individual Stock" and (analyze_button or 'last_single_analysis' in st.session_state):
         if analyze_button or st.session_state.get('last_symbol') == symbol:
             with st.spinner(f"Analyzing {symbol}..."):
@@ -600,7 +555,6 @@ def main():
                 st.session_state.last_single_analysis = stats
                 st.session_state.last_symbol = symbol
                 
-                # Display single stock analysis
                 display_single_stock_analysis(stats)
     
     elif analysis_type == "Full S&P 500" and (analyze_button or 'last_sp500_analysis' in st.session_state):
@@ -608,11 +562,9 @@ def main():
             summary_df, prices = analyze_sp500(period)
             st.session_state.last_sp500_analysis = (summary_df, prices)
             
-            # Display S&P 500 aggregate analysis
             display_sp500_analysis(summary_df, prices, period)
     
     else:
-        # Welcome screen
         st.markdown("""
         <div style='text-align: center; padding: 100px 20px;'>
             <h2 style='color: #8b92a8;'>Welcome to S&P 500 Drawdown Analysis</h2>
@@ -646,7 +598,6 @@ def display_single_stock_analysis(stats):
     fig = create_drawdown_chart(stats)
     st.plotly_chart(fig, use_container_width=True)
     
-    # Tabs
     tab1, tab2 = st.tabs(["📊 Statistics", "📋 Drawdown Periods"])
     
     with tab1:
@@ -688,7 +639,6 @@ def display_sp500_analysis(summary_df, prices, period):
     """Display aggregate S&P 500 analysis"""
     st.success(f"✅ Successfully analyzed {len(summary_df)} stocks from the S&P 500")
     
-    # Key Market Metrics
     st.markdown("### Market-Wide Statistics")
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -706,7 +656,6 @@ def display_sp500_analysis(summary_df, prices, period):
     
     st.markdown("---")
     
-    # Tabs for different analyses
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🏆 Rankings", "📈 Correlations", "🔍 Detailed Table"])
     
     with tab1:
@@ -779,7 +728,6 @@ def display_sp500_analysis(summary_df, prices, period):
     with tab3:
         st.markdown("### Drawdown Metrics Relationships")
         
-        # Correlation heatmap
         corr_cols = ['Max Drawdown (%)', 'Avg Drawdown (%)', 'Number of Drawdowns', 
                      'Avg DD Duration (days)', 'Recovery Rate (%)', 'Time in DD (%)']
         corr_matrix = summary_df[corr_cols].corr()
@@ -809,7 +757,6 @@ def display_sp500_analysis(summary_df, prices, period):
     with tab4:
         st.markdown("### Complete S&P 500 Data")
         
-        # Add filters
         col1, col2, col3 = st.columns(3)
         with col1:
             sort_by = st.selectbox("Sort by", options=['Max Drawdown (%)', 'Current Drawdown (%)', 
@@ -819,7 +766,6 @@ def display_sp500_analysis(summary_df, prices, period):
         with col3:
             filter_dd = st.slider("Filter: Max DD % (absolute)", 0, 100, (0, 100))
         
-        # Apply filters and sorting
         filtered_df = summary_df[
             (summary_df['Max Drawdown (%)'].abs() >= filter_dd[0]) & 
             (summary_df['Max Drawdown (%)'].abs() <= filter_dd[1])
@@ -841,7 +787,6 @@ def display_sp500_analysis(summary_df, prices, period):
             height=600
         )
         
-        # Download button
         csv = filtered_df.to_csv(index=False)
         st.download_button(
             label="📥 Download CSV",
