@@ -167,14 +167,34 @@ def get_sp500_symbols():
 @st.cache_data(ttl=3600)
 def download_sp500_data(symbols, period="2y"):
     """Download historical data for S&P 500 stocks."""
-    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True)
+    data = yf.download(symbols, period=period, progress=False, group_by='ticker', threads=True, auto_adjust=True)
     
     prices = pd.DataFrame()
-    for symbol in symbols:
+    
+    if len(symbols) == 1:
+        # Single symbol case
+        symbol = symbols[0]
         try:
-            if len(symbols) == 1:
-                if 'Adj Close' in data.columns:
-                    prices[symbol] = data['Adj Close']
+            if isinstance(data, pd.DataFrame):
+                if 'Close' in data.columns:
+                    prices[symbol] = data['Close']
+                elif len(data.columns) > 0:
+                    prices[symbol] = data.iloc[:, 0]
+        except (KeyError, TypeError, AttributeError):
+            pass
+    else:
+        # Multiple symbols case
+        for symbol in symbols:
+            try:
+                if 'Close' in data[symbol].columns:
+                    prices[symbol] = data[symbol]['Close']
+                elif len(data[symbol].columns) > 0:
+                    prices[symbol] = data[symbol].iloc[:, 0]
+            except (KeyError, TypeError, AttributeError):
+                continue
+    
+    prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
+    return prices = data['Adj Close']
                 else:
                     prices[symbol] = data['Close']
             else:
@@ -224,25 +244,56 @@ def analyze_sp500(period="2y"):
 def load_stock_data(symbol, period="2y"):
     """Load stock data from yfinance"""
     try:
-        data = yf.download(symbol, period=period, progress=False)
-        if len(data) > 0:
-            if 'Adj Close' in data.columns:
-                return data['Adj Close']
-            elif 'Close' in data.columns:
-                return data['Close']
+        # Download with auto_adjust=True to get simpler structure
+        data = yf.download(symbol, period=period, progress=False, auto_adjust=True)
+        
+        # Check if data was downloaded
+        if data is None or len(data) == 0:
+            return None
+        
+        # For auto_adjust=True, yfinance returns 'Close' directly
+        if isinstance(data, pd.DataFrame):
+            if 'Close' in data.columns:
+                result = data['Close']
+            elif len(data.columns) > 0:
+                # Take the first numeric column
+                result = data.iloc[:, 0]
+            else:
+                return None
+        elif isinstance(data, pd.Series):
+            result = data
+        else:
+            return None
+        
+        # Ensure it's a Series and has data
+        if isinstance(result, pd.Series) and len(result) > 0:
+            return result.dropna()
+        
         return None
+        
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
+        # Silently fail and return None
         return None
 
 @st.cache_data(ttl=3600)
 def analyze_stock(symbol, period="2y"):
     """Analyze a single stock"""
     prices = load_stock_data(symbol, period)
-    if prices is None or len(prices) < 10:
+    
+    # Check if prices loaded successfully
+    if prices is None:
+        return None
+    
+    # Check if prices is a Series and has data
+    if not isinstance(prices, pd.Series) or len(prices) < 10:
         return None
     
     returns = prices.pct_change().dropna()
+    
+    # Check if returns has enough data
+    if len(returns) < 10:
+        return None
+    
     stats = comprehensive_drawdown_stats(returns, symbol=symbol)
     stats['Prices'] = prices
     stats['Returns'] = returns
