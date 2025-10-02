@@ -365,63 +365,237 @@ def create_drawdown_magnitude_duration_scatter(stats):
     return fig
 
 def create_drawdown_waterfall(stats):
-    """Line plot of top drawdowns starting from 0"""
+    """Enhanced drawdown visualization with multiple view options"""
     periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:15]
+    
+    if not periods:
+        return None
+    
+    # Create subplots - 3 columns x 5 rows for 15 drawdowns
+    fig = make_subplots(
+        rows=5, cols=3,
+        subplot_titles=[f"{p['Start'].strftime('%Y-%m-%d')}<br>{abs(p['Max Drawdown']*100):.1f}%" for p in periods],
+        vertical_spacing=0.08,
+        horizontal_spacing=0.08
+    )
+    
+    # Plot each drawdown in its own subplot
+    for idx, p in enumerate(periods):
+        row = idx // 3 + 1
+        col = idx % 3 + 1
+        
+        # Create timeline for this drawdown
+        start_date = p['Start']
+        valley_date = p['Valley']
+        end_date = p['End']
+        recovery_date = p['Recovery'] if p['Recovery'] else end_date
+        
+        dates = [start_date, valley_date, end_date]
+        values = [0, p['Max Drawdown'] * 100, 0]
+        
+        if p['Recovery']:
+            dates.append(recovery_date)
+            values.append(0)
+        
+        # Color based on severity
+        severity = abs(p['Max Drawdown'] * 100)
+        if severity < 10:
+            color = '#ffa502'
+        elif severity < 20:
+            color = '#ff6348'
+        else:
+            color = '#ff4757'
+        
+        fig.add_trace(
+            go.Scatter(
+                x=dates, y=values,
+                mode='lines',
+                line=dict(color=color, width=2),
+                fill='tozeroy',
+                fillcolor=color.replace(')', ', 0.3)').replace('rgb', 'rgba'),
+                showlegend=False,
+                hovertemplate=f"<b>{start_date.strftime('%Y-%m-%d')}</b><br>DD: {abs(p['Max Drawdown']*100):.2f}%<br>Days: {p['Duration (days)']} <extra></extra>"
+            ),
+            row=row, col=col
+        )
+        
+        # Mark the valley point
+        fig.add_trace(
+            go.Scatter(
+                x=[valley_date],
+                y=[p['Max Drawdown'] * 100],
+                mode='markers',
+                marker=dict(color='white', size=6, line=dict(color=color, width=2)),
+                showlegend=False,
+                hoverinfo='skip'
+            ),
+            row=row, col=col
+        )
+    
+    fig.update_layout(
+        title="Top 15 Drawdowns - Individual Profiles (Small Multiples)",
+        height=1200,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#1a1d26',
+        font=dict(color='#8b92a8', size=9),
+        showlegend=False
+    )
+    
+    # Update all axes
+    for i in range(1, 16):
+        row = (i - 1) // 3 + 1
+        col = (i - 1) % 3 + 1
+        fig.update_xaxes(showgrid=True, gridcolor='#262a33', showticklabels=False, row=row, col=col)
+        fig.update_yaxes(showgrid=True, gridcolor='#262a33', zeroline=True, zerolinecolor='#3d4452', row=row, col=col)
+    
+    return fig
+
+def create_drawdown_timeline_bars(stats):
+    """Timeline view with horizontal bars showing drawdown periods"""
+    periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:20]
     
     if not periods:
         return None
     
     fig = go.Figure()
     
-    # Create a line for each drawdown event
     for i, p in enumerate(periods):
-        start_date = p['Start']
-        valley_date = p['Valley']
-        end_date = p['End']
-        recovery_date = p['Recovery'] if p['Recovery'] else end_date
-        
-        # Create timeline for this drawdown
-        dates = [start_date, valley_date, end_date]
-        values = [0, p['Max Drawdown'] * 100, 0]
-        
-        # If recovered, add recovery point
-        if p['Recovery']:
-            dates.append(recovery_date)
-            values.append(0)
+        # Calculate bar properties
+        start = p['Start']
+        end = p['Recovery'] if p['Recovery'] else p['End']
+        severity = abs(p['Max Drawdown'] * 100)
         
         # Color based on severity
-        color = f'rgba(255, {int(71 + i * 10)}, {int(87 + i * 5)}, 0.8)'
+        if severity < 10:
+            color = '#ffa502'
+        elif severity < 20:
+            color = '#ff6348'
+        else:
+            color = '#ff4757'
         
+        # Add bar for drawdown period
+        fig.add_trace(go.Bar(
+            x=[end - start],
+            y=[i],
+            base=start,
+            orientation='h',
+            marker=dict(
+                color=color,
+                opacity=0.8,
+                line=dict(color='white', width=1)
+            ),
+            name=f"{start.strftime('%Y-%m-%d')}",
+            text=f"{severity:.1f}%",
+            textposition='inside',
+            hovertemplate=f"<b>{start.strftime('%Y-%m-%d')}</b><br>Max DD: {severity:.2f}%<br>Duration: {p['Duration (days)')} days<br>Recovery: {p['Recovery Time (days)']} days<extra></extra>"
+        ))
+        
+        # Add marker at valley
+        valley_x = p['Valley']
         fig.add_trace(go.Scatter(
-            x=dates,
-            y=values,
-            mode='lines',
-            name=f"{start_date.strftime('%Y-%m-%d')}",
-            line=dict(color=color, width=2),
-            hovertemplate=f"<b>{start_date.strftime('%Y-%m-%d')}</b><br>Max DD: {abs(p['Max Drawdown']*100):.2f}%<br>Duration: {p['Duration (days)']} days<extra></extra>"
+            x=[valley_x],
+            y=[i],
+            mode='markers',
+            marker=dict(
+                symbol='diamond',
+                size=10,
+                color='white',
+                line=dict(color=color, width=2)
+            ),
+            showlegend=False,
+            hoverinfo='skip'
         ))
     
     fig.update_layout(
-        title="Top 15 Drawdowns - Timeline View",
-        xaxis_title="Date",
-        yaxis_title="Drawdown (%)",
+        title="Drawdown Timeline - Duration & Severity View",
+        xaxis_title="Time",
+        yaxis_title="Drawdown Events (ranked by severity)",
+        height=700,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#1a1d26',
+        font=dict(color='#8b92a8'),
+        showlegend=False,
+        yaxis=dict(showticklabels=False)
+    )
+    
+    fig.update_xaxes(gridcolor='#262a33', showgrid=True)
+    fig.update_yaxes(gridcolor='#262a33', showgrid=False)
+    
+    return fig
+
+def create_drawdown_bubble_chart(stats):
+    """Bubble chart: start date vs depth, size = duration"""
+    periods = stats['Drawdown Periods']
+    
+    if not periods:
+        return None
+    
+    start_dates = [p['Start'] for p in periods]
+    depths = [abs(p['Max Drawdown'] * 100) for p in periods]
+    durations = [p['Duration (days)'] for p in periods]
+    recovery_status = ['Recovered' if p['Recovery'] else 'Not Recovered' for p in periods]
+    recovery_times = [p['Recovery Time (days)'] if p['Recovery Time (days)'] else 0 for p in periods]
+    
+    fig = go.Figure()
+    
+    # Recovered drawdowns
+    recovered_mask = [p['Recovery'] is not None for p in periods]
+    fig.add_trace(go.Scatter(
+        x=[d for d, r in zip(start_dates, recovered_mask) if r],
+        y=[depth for depth, r in zip(depths, recovered_mask) if r],
+        mode='markers',
+        marker=dict(
+            size=[dur/5 for dur, r in zip(durations, recovered_mask) if r],
+            color=[rt for rt, r in zip(recovery_times, recovered_mask) if r],
+            colorscale='Greens',
+            showscale=True,
+            colorbar=dict(title="Recovery<br>Time (days)", x=1.15),
+            line=dict(color='white', width=1),
+            sizemode='diameter'
+        ),
+        name='Recovered',
+        text=[f"Start: {d.strftime('%Y-%m-%d')}<br>DD: {depth:.1f}%<br>Duration: {dur} days<br>Recovery: {rt} days" 
+              for d, depth, dur, rt, r in zip(start_dates, depths, durations, recovery_times, recovered_mask) if r],
+        hovertemplate='%{text}<extra></extra>'
+    ))
+    
+    # Not recovered drawdowns
+    fig.add_trace(go.Scatter(
+        x=[d for d, r in zip(start_dates, recovered_mask) if not r],
+        y=[depth for depth, r in zip(depths, recovered_mask) if not r],
+        mode='markers',
+        marker=dict(
+            size=[dur/5 for dur, r in zip(durations, recovered_mask) if not r],
+            color='#ff4757',
+            line=dict(color='white', width=1),
+            sizemode='diameter'
+        ),
+        name='Not Recovered',
+        text=[f"Start: {d.strftime('%Y-%m-%d')}<br>DD: {depth:.1f}%<br>Duration: {dur} days<br>Status: Ongoing" 
+              for d, depth, dur, r in zip(start_dates, depths, durations, recovered_mask) if not r],
+        hovertemplate='%{text}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title="Drawdown Bubble Chart - Timeline vs Severity<br><sub>Bubble size = Duration</sub>",
+        xaxis_title="Start Date",
+        yaxis_title="Maximum Drawdown (%)",
         height=600,
         plot_bgcolor='#0e1117',
         paper_bgcolor='#1a1d26',
         font=dict(color='#8b92a8'),
         hovermode='closest',
-        showlegend=True,
         legend=dict(
-            yanchor="bottom",
-            y=0.01,
-            xanchor="right",
-            x=0.99,
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
             bgcolor='rgba(26, 29, 38, 0.8)'
         )
     )
     
     fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=True, zeroline=True, zerolinecolor='#3d4452')
+    fig.update_yaxes(gridcolor='#262a33', showgrid=True)
     
     return fig
 
@@ -730,16 +904,86 @@ def display_single_stock_analysis(stats):
     with tab1:
         st.markdown("### Individual Drawdown Events")
         
-        col1, col2 = st.columns(2)
-        with col1:
+        # Add chart selection
+        chart_type = st.radio(
+            "Visualization Style",
+            options=["Small Multiples (Individual Profiles)", "Timeline Bars", "Bubble Chart"],
+            horizontal=True
+        )
+        
+        if chart_type == "Small Multiples (Individual Profiles)":
+            st.info("📊 Each drawdown shown in its own chart - best for comparing shapes and profiles")
             fig = create_drawdown_waterfall(stats)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
         
-        with col2:
+        st.markdown("---")
+        
+        # Detailed metrics for each drawdown
+        st.markdown("#### All Drawdown Events")
+        if stats['Drawdown Periods']:
+            periods_data = []
+            for i, p in enumerate(stats['Drawdown Periods'], 1):
+                periods_data.append({
+                    '#': i,
+                    'Start': p['Start'].strftime('%Y-%m-%d'),
+                    'Valley': p['Valley'].strftime('%Y-%m-%d'),
+                    'End': p['End'].strftime('%Y-%m-%d'),
+                    'Recovery': p['Recovery'].strftime('%Y-%m-%d') if p['Recovery'] else 'Ongoing',
+                    'Max DD (%)': f"{p['Max Drawdown'] * 100:.2f}",
+                    'Duration (days)': p['Duration (days)'],
+                    'Recovery (days)': p['Recovery Time (days)'] if p['Recovery Time (days)'] else 'N/A'
+                })
+            df = pd.DataFrame(periods_data)
+            st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+        
+        elif chart_type == "Timeline Bars":
+            st.info("📅 Horizontal bars showing when drawdowns occurred, colored by severity, with valley markers")
+            fig = create_drawdown_timeline_bars(stats)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+        
+        else:  # Bubble Chart
+            st.info("🎯 Bubble chart: X=Start Date, Y=Depth, Size=Duration, Color=Recovery Time")
+            fig = create_drawdown_bubble_chart(stats)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # Additional scatter plot
+        col1, col2 = st.columns(2)
+        with col1:
             fig = create_drawdown_magnitude_duration_scatter(stats)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Top 10 worst in a simple bar chart
+            periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:10]
+            dates = [p['Start'].strftime('%Y-%m-%d') for p in periods]
+            values = [abs(p['Max Drawdown'] * 100) for p in periods]
+            
+            fig = go.Figure(go.Bar(
+                x=values, y=dates, orientation='h',
+                marker=dict(color=values, colorscale='Reds',
+                           line=dict(color='white', width=0.5)),
+                text=[f"{v:.2f}%" for v in values],
+                textposition='outside'
+            ))
+            
+            fig.update_layout(
+                title="Top 10 Worst Drawdowns",
+                xaxis_title="Drawdown Depth (%)", yaxis_title="",
+                height=400, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
+                font=dict(color='#8b92a8'), yaxis=dict(autorange="reversed"),
+                showlegend=False
+            )
+            
+            fig.update_xaxes(gridcolor='#262a33', showgrid=True)
+            fig.update_yaxes(gridcolor='#262a33', showgrid=False)
+            
+            st.plotly_chart(fig, use_container_width=True)
         
         # Detailed metrics for each drawdown
         st.markdown("#### All Drawdown Events")
