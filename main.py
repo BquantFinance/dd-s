@@ -365,32 +365,63 @@ def create_drawdown_magnitude_duration_scatter(stats):
     return fig
 
 def create_drawdown_waterfall(stats):
-    """Waterfall chart of top drawdowns"""
+    """Line plot of top drawdowns starting from 0"""
     periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:15]
     
     if not periods:
         return None
     
-    labels = [f"{p['Start'].strftime('%Y-%m-%d')}" for p in periods]
-    values = [abs(p['Max Drawdown'] * 100) for p in periods]
+    fig = go.Figure()
     
-    fig = go.Figure(go.Bar(
-        x=values, y=labels, orientation='h',
-        marker=dict(color=values, colorscale='Reds', showscale=False,
-                   line=dict(color='white', width=0.5)),
-        text=[f"{v:.2f}%" for v in values],
-        textposition='outside'
-    ))
+    # Create a line for each drawdown event
+    for i, p in enumerate(periods):
+        start_date = p['Start']
+        valley_date = p['Valley']
+        end_date = p['End']
+        recovery_date = p['Recovery'] if p['Recovery'] else end_date
+        
+        # Create timeline for this drawdown
+        dates = [start_date, valley_date, end_date]
+        values = [0, p['Max Drawdown'] * 100, 0]
+        
+        # If recovered, add recovery point
+        if p['Recovery']:
+            dates.append(recovery_date)
+            values.append(0)
+        
+        # Color based on severity
+        color = f'rgba(255, {int(71 + i * 10)}, {int(87 + i * 5)}, 0.8)'
+        
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=values,
+            mode='lines',
+            name=f"{start_date.strftime('%Y-%m-%d')}",
+            line=dict(color=color, width=2),
+            hovertemplate=f"<b>{start_date.strftime('%Y-%m-%d')}</b><br>Max DD: {abs(p['Max Drawdown']*100):.2f}%<br>Duration: {p['Duration (days)']} days<extra></extra>"
+        ))
     
     fig.update_layout(
-        title="Top 15 Drawdowns by Magnitude",
-        xaxis_title="Drawdown Depth (%)", yaxis_title="",
-        height=600, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8'), yaxis=dict(autorange="reversed")
+        title="Top 15 Drawdowns - Timeline View",
+        xaxis_title="Date",
+        yaxis_title="Drawdown (%)",
+        height=600,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#1a1d26',
+        font=dict(color='#8b92a8'),
+        hovermode='closest',
+        showlegend=True,
+        legend=dict(
+            yanchor="bottom",
+            y=0.01,
+            xanchor="right",
+            x=0.99,
+            bgcolor='rgba(26, 29, 38, 0.8)'
+        )
     )
     
     fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=False)
+    fig.update_yaxes(gridcolor='#262a33', showgrid=True, zeroline=True, zerolinecolor='#3d4452')
     
     return fig
 
