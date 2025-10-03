@@ -10,215 +10,155 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-# ==================== HELPER FUNCTIONS ====================
+# ==================== CONFIGURATION ====================
+st.set_page_config(
+    page_title="Drawdown Intelligence Lab",
+    page_icon="🌊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def validate_input(returns):
-    if not isinstance(returns, pd.Series):
-        raise ValueError("Input must be a pandas Series")
-    if len(returns) == 0:
-        raise ValueError("Input series is empty")
+# ==================== STYLING ====================
+st.markdown("""
+<style>
+    .main { background-color: #0e1117; }
+    .stMetric { 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        margin: 10px;
+    }
+    .insight-box {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 20px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .warning-box {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        padding: 20px;
+        border-radius: 15px;
+        margin: 20px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    h1, h2, h3 { 
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def _get_baseline_value(prices):
-    if len(prices) > 0:
-        return prices.iloc[0]
-    return 1.0
+# ==================== CORE FUNCTIONS ====================
 
-def to_drawdown_series(returns):
-    validate_input(returns)
-    prices = (1 + returns).cumprod()
-    
-    if len(prices) == 0:
-        return pd.Series([], dtype=float, index=returns.index)
-    
-    try:
-        time_delta = prices.index.freq or pd.Timedelta(days=1)
-    except Exception:
-        time_delta = pd.Timedelta(days=1)
-    
-    phantom_date = prices.index[0] - time_delta
-    baseline_value = _get_baseline_value(prices)
-    
-    extended_prices = prices.copy()
-    extended_prices.loc[phantom_date] = baseline_value
-    extended_prices = extended_prices.sort_index()
-    
-    dd = extended_prices / np.maximum.accumulate(extended_prices) - 1.0
-    dd = dd.drop(phantom_date)
-    
-    return dd.replace([np.inf, -np.inf, -0], 0)
+def calculate_drawdowns(prices):
+    """Calculate drawdown series from prices"""
+    cummax = prices.expanding().max()
+    drawdown = (prices - cummax) / cummax
+    return drawdown
 
-def identify_drawdown_periods(drawdowns, threshold=-0.001):
-    in_drawdown = drawdowns < threshold
-    drawdown_groups = (in_drawdown != in_drawdown.shift()).cumsum()
+def get_drawdown_episodes(prices, threshold=-0.02):
+    """Identify and analyze distinct drawdown episodes"""
+    dd_series = calculate_drawdowns(prices)
+    in_drawdown = dd_series < threshold
     
-    periods = []
+    # Group consecutive drawdown days
+    dd_groups = (in_drawdown != in_drawdown.shift()).cumsum()
     
-    for group_id in drawdown_groups[in_drawdown].unique():
-        mask = (drawdown_groups == group_id) & in_drawdown
-        dd_period = drawdowns[mask]
+    episodes = []
+    for group_id in dd_groups[in_drawdown].unique():
+        mask = (dd_groups == group_id) & in_drawdown
+        episode = dd_series[mask]
         
-        if len(dd_period) == 0:
+        if len(episode) < 2:  # Skip very short drawdowns
             continue
+            
+        # Get key dates
+        start_idx = episode.index[0]
+        start_price = prices.loc[start_idx]
         
-        start_date = dd_period.index[0]
-        end_date = dd_period.index[-1]
-        valley_date = dd_period.idxmin()
-        max_dd = dd_period.min()
-        duration_days = (end_date - start_date).days
-        
-        future_data = drawdowns[drawdowns.index > end_date]
-        if len(future_data) > 0:
-            recovered_mask = future_data >= -0.001
-            if recovered_mask.any():
-                recovery_date = future_data[recovered_mask].index[0]
-                recovery_days = (recovery_date - valley_date).days
-            else:
-                recovery_date = None
-                recovery_days = None
+        # Find the peak before drawdown
+        pre_dd = prices[:start_idx]
+        if len(pre_dd) > 0:
+            peak_idx = pre_dd.index[-1]
+            peak_price = pre_dd.iloc[-1]
         else:
-            recovery_date = None
-            recovery_days = None
+            continue
+            
+        # Find the bottom
+        bottom_idx = episode.idxmin()
+        bottom_price = prices.loc[bottom_idx]
         
-        periods.append({
-            'Start': start_date,
-            'Valley': valley_date,
-            'End': end_date,
-            'Recovery': recovery_date,
-            'Max Drawdown': max_dd,
-            'Duration (days)': duration_days,
-            'Recovery Time (days)': recovery_days
+        # Find recovery (if any)
+        post_dd = prices[prices.index > bottom_idx]
+        recovery_mask = post_dd >= peak_price * 0.98  # Within 2% of peak
+        
+        if recovery_mask.any():
+            recovery_idx = post_dd[recovery_mask].index[0]
+            recovered = True
+            recovery_days = (recovery_idx - bottom_idx).days
+        else:
+            recovery_idx = None
+            recovered = False
+            recovery_days = (prices.index[-1] - bottom_idx).days
+        
+        # Calculate metrics
+        max_dd = episode.min()
+        duration = (episode.index[-1] - episode.index[0]).days
+        
+        # Calculate velocity (how fast it fell)
+        fall_days = (bottom_idx - start_idx).days
+        velocity = abs(max_dd) / max(fall_days, 1)
+        
+        episodes.append({
+            'start_date': start_idx,
+            'peak_date': peak_idx,
+            'bottom_date': bottom_idx,
+            'end_date': episode.index[-1],
+            'recovery_date': recovery_idx,
+            'peak_price': peak_price,
+            'bottom_price': bottom_price,
+            'max_drawdown': max_dd,
+            'duration_days': duration,
+            'fall_days': fall_days,
+            'recovery_days': recovery_days,
+            'recovered': recovered,
+            'velocity': velocity,
+            'drawdown_series': episode
         })
     
-    return periods
+    return sorted(episodes, key=lambda x: x['max_drawdown'])
 
-def comprehensive_drawdown_stats(returns, symbol=None):
-    drawdowns = to_drawdown_series(returns)
-    dd_periods = identify_drawdown_periods(drawdowns)
-    
-    if len(dd_periods) == 0:
-        return {
-            'Symbol': symbol,
-            'Number of Drawdowns': 0,
-            'Max Drawdown (%)': 0,
-            'Avg Drawdown (%)': 0,
-            'Max DD Duration (days)': 0,
-            'Avg DD Duration (days)': 0,
-            'Max Recovery Time (days)': 0,
-            'Avg Recovery Time (days)': 0,
-            'Recovery Rate (%)': 0,
-            'Current Drawdown (%)': drawdowns.iloc[-1] * 100,
-            'Days in DD': (drawdowns < -0.001).sum(),
-            'Time in DD (%)': ((drawdowns < -0.001).sum() / len(drawdowns)) * 100,
-            'Drawdown Periods': [],
-            'Drawdown Series': drawdowns
-        }
-    
-    max_dds = [p['Max Drawdown'] for p in dd_periods]
-    durations = [p['Duration (days)'] for p in dd_periods]
-    recovery_times = [p['Recovery Time (days)'] for p in dd_periods if p['Recovery Time (days)'] is not None]
-    
-    recovered = sum(1 for p in dd_periods if p['Recovery'] is not None)
-    recovery_rate = (recovered / len(dd_periods)) * 100 if dd_periods else 0
-    
-    worst_dd_idx = np.argmin(max_dds)
-    worst_dd_period = dd_periods[worst_dd_idx]
-    
-    stats = {
-        'Symbol': symbol,
-        'Number of Drawdowns': len(dd_periods),
-        'Max Drawdown (%)': min(max_dds) * 100,
-        'Avg Drawdown (%)': np.mean(max_dds) * 100,
-        'Max DD Duration (days)': max(durations),
-        'Avg DD Duration (days)': np.mean(durations),
-        'Max Recovery Time (days)': max(recovery_times) if recovery_times else None,
-        'Avg Recovery Time (days)': np.mean(recovery_times) if recovery_times else None,
-        'Recovery Rate (%)': recovery_rate,
-        'Current Drawdown (%)': drawdowns.iloc[-1] * 100,
-        'Days in DD': (drawdowns < -0.001).sum(),
-        'Time in DD (%)': ((drawdowns < -0.001).sum() / len(drawdowns)) * 100,
-        'Worst DD Start': worst_dd_period['Start'],
-        'Worst DD Valley': worst_dd_period['Valley'],
-        'Worst DD End': worst_dd_period['End'],
-        'Worst DD Recovery': worst_dd_period['Recovery'],
-        'Drawdown Periods': dd_periods,
-        'Drawdown Series': drawdowns
-    }
-    
-    return stats
+def calculate_pain_index(drawdowns):
+    """Calculate pain index - average drawdown over period"""
+    return abs(drawdowns[drawdowns < 0].mean()) * 100 if len(drawdowns[drawdowns < 0]) > 0 else 0
 
-# ==================== S&P 500 FUNCTIONS ====================
+def calculate_ulcer_index(drawdowns):
+    """Calculate Ulcer Index - measures both depth and duration of drawdowns"""
+    squared_dd = drawdowns ** 2
+    return np.sqrt(squared_dd.mean()) * 100
 
-@st.cache_data(ttl=86400)
-def get_sp500_symbols():
-    """Scrape S&P 500 symbols from Wikipedia."""
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+def get_market_regime(prices, window=50):
+    """Identify market regime (trending up/down/sideways)"""
+    sma_short = prices.rolling(window=20).mean()
+    sma_long = prices.rolling(window=window).mean()
     
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    regime = pd.Series(index=prices.index, dtype='object')
+    regime[sma_short > sma_long] = 'Bull'
+    regime[sma_short < sma_long] = 'Bear'
+    regime[abs(sma_short - sma_long) / sma_long < 0.02] = 'Sideways'
     
-    tables = pd.read_html(response.text)
-    sp500_table = tables[0]
-    symbols = sp500_table['Symbol'].tolist()
-    symbols = [s.replace('.', '-') for s in symbols]
-    
-    return symbols
-
-@st.cache_data(ttl=3600)
-def download_sp500_data(symbols, period="2y"):
-    """Download historical data for S&P 500 stocks."""
-    prices = pd.DataFrame()
-    
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period)
-            
-            if data is not None and len(data) > 0 and 'Close' in data.columns:
-                prices[symbol] = data['Close']
-        except Exception:
-            continue
-    
-    prices = prices.dropna(axis=1, thresh=len(prices) * 0.8)
-    return prices
-
-@st.cache_data(ttl=3600)
-def analyze_sp500(period="2y"):
-    """Analyze all S&P 500 stocks."""
-    symbols = get_sp500_symbols()
-    prices = download_sp500_data(symbols, period)
-    
-    summary_results = []
-    all_drawdown_periods = []
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, symbol in enumerate(prices.columns):
-        returns = prices[symbol].pct_change().dropna()
-        
-        if len(returns) < 10:
-            continue
-        
-        stats = comprehensive_drawdown_stats(returns, symbol=symbol)
-        summary_dict = {k: v for k, v in stats.items() if k not in ['Drawdown Periods', 'Drawdown Series']}
-        summary_results.append(summary_dict)
-        
-        for period_info in stats['Drawdown Periods']:
-            period_dict = period_info.copy()
-            period_dict['Symbol'] = symbol
-            all_drawdown_periods.append(period_dict)
-        
-        progress_bar.progress((i + 1) / len(prices.columns))
-        status_text.text(f"Analyzing {i + 1}/{len(prices.columns)} stocks...")
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    summary_df = pd.DataFrame(summary_results)
-    periods_df = pd.DataFrame(all_drawdown_periods)
-    
-    return summary_df, prices, periods_df
+    return regime
 
 # ==================== DATA LOADING ====================
 
@@ -228,967 +168,990 @@ def load_stock_data(symbol, period="2y"):
     try:
         ticker = yf.Ticker(symbol)
         data = ticker.history(period=period)
-        
-        if data is None or len(data) == 0:
-            return None
-        
-        if 'Close' in data.columns:
-            result = data['Close']
-            if isinstance(result, pd.Series) and len(result) > 10:
-                return result.dropna()
+        if data is not None and len(data) > 0 and 'Close' in data.columns:
+            return data['Close'].dropna()
         return None
-        
-    except Exception:
+    except Exception as e:
         return None
+
+@st.cache_data(ttl=86400)
+def get_sp500_symbols():
+    """Get S&P 500 symbols"""
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers=headers)
+    tables = pd.read_html(response.text)
+    sp500_table = tables[0]
+    symbols = sp500_table['Symbol'].str.replace('.', '-').tolist()
+    return symbols
 
 @st.cache_data(ttl=3600)
-def analyze_stock(symbol, period="2y"):
-    """Analyze a single stock"""
-    prices = load_stock_data(symbol, period)
+def load_index_components(symbols, period="2y"):
+    """Load data for multiple symbols"""
+    prices_dict = {}
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    if prices is None or not isinstance(prices, pd.Series) or len(prices) < 10:
-        return None
-    
-    returns = prices.pct_change().dropna()
-    
-    if len(returns) < 10:
-        return None
-    
-    stats = comprehensive_drawdown_stats(returns, symbol=symbol)
-    stats['Prices'] = prices
-    stats['Returns'] = returns
-    
-    return stats
-
-# ==================== PAGE CONFIG ====================
-
-st.set_page_config(
-    page_title="S&P 500 Drawdown Analysis",
-    page_icon="📉",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# ==================== DARK MODE STYLING ====================
-
-st.markdown("""
-<style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #1a1d26; padding: 15px; border-radius: 10px; border: 1px solid #262a33; }
-    h1, h2, h3 { color: #ffffff; font-weight: 600; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; background-color: #1a1d26; border-radius: 10px; padding: 5px; }
-    .stTabs [data-baseweb="tab"] { background-color: transparent; color: #8b92a8; border-radius: 8px; padding: 10px 20px; }
-    .stTabs [aria-selected="true"] { background-color: #262a33; color: #ffffff; }
-</style>
-""", unsafe_allow_html=True)
-
-# ==================== COMPREHENSIVE PLOTTING FUNCTIONS ====================
-
-def create_drawdown_timeline(stats):
-    """Create comprehensive price and drawdown timeline"""
-    drawdowns = stats['Drawdown Series']
-    prices = stats['Prices']
-    
-    fig = make_subplots(
-        rows=2, cols=1,
-        row_heights=[0.6, 0.4],
-        subplot_titles=('Price History & Peak Points', 'Drawdown Timeline'),
-        vertical_spacing=0.1
-    )
-    
-    cummax_prices = prices.cummax()
-    
-    fig.add_trace(go.Scatter(x=prices.index, y=prices.values, name='Price',
-                             line=dict(color='#00d4ff', width=2), fill='tonexty',
-                             fillcolor='rgba(0, 212, 255, 0.1)'), row=1, col=1)
-    
-    fig.add_trace(go.Scatter(x=cummax_prices.index, y=cummax_prices.values, name='Peak',
-                             line=dict(color='#2ed573', width=1, dash='dash')), row=1, col=1)
-    
-    fig.add_trace(go.Scatter(x=drawdowns.index, y=drawdowns.values * 100, name='Drawdown',
-                             line=dict(color='#ff4757', width=2), fill='tozeroy',
-                             fillcolor='rgba(255, 71, 87, 0.3)'), row=2, col=1)
-    
-    colors = ['rgba(255, 71, 87, 0.15)', 'rgba(255, 107, 107, 0.15)', 'rgba(255, 159, 67, 0.15)']
-    for i, period in enumerate(stats['Drawdown Periods'][:10]):
-        color = colors[i % len(colors)]
-        fig.add_vrect(x0=period['Start'], x1=period['End'], fillcolor=color,
-                     layer='below', line_width=0, row=2, col=1)
-    
-    fig.update_layout(height=700, showlegend=True, hovermode='x unified',
-                     plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-                     font=dict(color='#8b92a8'), margin=dict(l=50, r=50, t=50, b=50))
-    
-    fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=True)
-    
-    return fig
-
-def create_drawdown_small_multiples(stats):
-    """Small multiples view of top 15 drawdowns"""
-    periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:15]
-    
-    if not periods:
-        return None
-    
-    fig = make_subplots(
-        rows=5, cols=3,
-        subplot_titles=[f"{p['Start'].strftime('%Y-%m-%d')}<br>{abs(p['Max Drawdown']*100):.1f}%" for p in periods],
-        vertical_spacing=0.08,
-        horizontal_spacing=0.08
-    )
-    
-    for idx, p in enumerate(periods):
-        row = idx // 3 + 1
-        col = idx % 3 + 1
+    for i, symbol in enumerate(symbols[:100]):  # Limit to 100 for speed
+        try:
+            prices = load_stock_data(symbol, period)
+            if prices is not None and len(prices) > 50:
+                prices_dict[symbol] = prices
+        except:
+            continue
         
-        start_date = p['Start']
-        valley_date = p['Valley']
-        end_date = p['End']
-        recovery_date = p['Recovery'] if p['Recovery'] else end_date
-        
-        dates = [start_date, valley_date, end_date]
-        values = [0, p['Max Drawdown'] * 100, 0]
-        
-        if p['Recovery']:
-            dates.append(recovery_date)
-            values.append(0)
-        
-        severity = abs(p['Max Drawdown'] * 100)
-        if severity < 10:
-            color = '#ffa502'
-        elif severity < 20:
-            color = '#ff6348'
-        else:
-            color = '#ff4757'
-        
-        fig.add_trace(
-            go.Scatter(
-                x=dates, y=values, mode='lines', line=dict(color=color, width=2),
-                fill='tozeroy', fillcolor=color.replace(')', ', 0.3)').replace('rgb', 'rgba'),
-                showlegend=False,
-                hovertemplate=f"<b>{start_date.strftime('%Y-%m-%d')}</b><br>DD: {abs(p['Max Drawdown']*100):.2f}%<br>Days: {p['Duration (days)']} <extra></extra>"
-            ),
-            row=row, col=col
-        )
-        
-        fig.add_trace(
-            go.Scatter(
-                x=[valley_date], y=[p['Max Drawdown'] * 100], mode='markers',
-                marker=dict(color='white', size=6, line=dict(color=color, width=2)),
-                showlegend=False, hoverinfo='skip'
-            ),
-            row=row, col=col
-        )
+        progress_bar.progress((i + 1) / min(len(symbols), 100))
+        status_text.text(f"Loading {symbol}...")
     
-    fig.update_layout(
-        title="Top 15 Drawdowns - Individual Profiles (Small Multiples)",
-        height=1200, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8', size=9), showlegend=False
-    )
+    progress_bar.empty()
+    status_text.empty()
     
-    for i in range(1, 16):
-        row = (i - 1) // 3 + 1
-        col = (i - 1) % 3 + 1
-        fig.update_xaxes(showgrid=True, gridcolor='#262a33', showticklabels=False, row=row, col=col)
-        fig.update_yaxes(showgrid=True, gridcolor='#262a33', zeroline=True, zerolinecolor='#3d4452', row=row, col=col)
-    
-    return fig
+    return pd.DataFrame(prices_dict)
 
-def create_drawdown_timeline_bars(stats):
-    """Timeline view with horizontal bars"""
-    periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:20]
-    
-    if not periods:
-        return None
+# ==================== VISUALIZATION FUNCTIONS ====================
+
+def create_underwater_chart(prices, episodes):
+    """Create underwater breathing visualization"""
+    dd_series = calculate_drawdowns(prices)
     
     fig = go.Figure()
     
-    for i, p in enumerate(periods):
-        start = p['Start']
-        end = p['Recovery'] if p['Recovery'] else p['End']
-        severity = abs(p['Max Drawdown'] * 100)
-        
-        if severity < 10:
-            color = '#ffa502'
-        elif severity < 20:
-            color = '#ff6348'
+    # Main underwater area
+    fig.add_trace(go.Scatter(
+        x=dd_series.index,
+        y=dd_series.values * 100,
+        fill='tozeroy',
+        fillcolor='rgba(53, 92, 125, 0.6)',
+        line=dict(color='rgb(53, 92, 125)', width=2),
+        name='Underwater',
+        hovertemplate='Date: %{x}<br>Depth: %{y:.1f}%<extra></extra>'
+    ))
+    
+    # Add "oxygen levels" - deeper = more critical
+    for episode in episodes[:5]:  # Top 5 worst
+        depth = abs(episode['max_drawdown'] * 100)
+        if depth > 20:
+            color = 'rgba(255, 0, 0, 0.3)'
+            label = '🔴 Critical'
+        elif depth > 10:
+            color = 'rgba(255, 165, 0, 0.3)'
+            label = '🟠 Warning'
         else:
-            color = '#ff4757'
+            color = 'rgba(255, 255, 0, 0.3)'
+            label = '🟡 Caution'
         
-        fig.add_trace(go.Bar(
-            x=[end - start], y=[i], base=start, orientation='h',
-            marker=dict(color=color, opacity=0.8, line=dict(color='white', width=1)),
-            name=f"{start.strftime('%Y-%m-%d')}", text=f"{severity:.1f}%", textposition='inside',
-            hovertemplate=f"<b>{start.strftime('%Y-%m-%d')}</b><br>Max DD: {severity:.2f}%<br>Duration: {p['Duration (days)']} days<br>Recovery: {p['Recovery Time (days)']} days<extra></extra>"
-        ))
+        fig.add_vrect(
+            x0=episode['start_date'],
+            x1=episode['end_date'],
+            fillcolor=color,
+            layer='below',
+            line_width=0,
+            annotation_text=f"{depth:.1f}%",
+            annotation_position="top"
+        )
+    
+    # Surface line
+    fig.add_hline(y=0, line_dash="dash", line_color="white", line_width=2, opacity=0.5)
+    
+    fig.update_layout(
+        title={
+            'text': "🏊 Underwater Breathing Chart<br><sub>How long can you hold your breath?</sub>",
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        xaxis_title="",
+        yaxis_title="Depth (%)",
+        height=400,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#0e1117',
+        font=dict(color='white'),
+        hovermode='x unified',
+        showlegend=False
+    )
+    
+    fig.update_yaxis(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
+    fig.update_xaxis(gridcolor='#1e3a5f')
+    
+    return fig
+
+def create_recovery_velocity_gauge(episodes):
+    """Create speedometer-style recovery velocity visualization"""
+    if not episodes:
+        return None
+    
+    recent_episode = episodes[0]  # Most recent/severe
+    
+    if recent_episode['recovered']:
+        # Calculate recovery velocity (% recovered per day)
+        recovery_velocity = abs(recent_episode['max_drawdown']) / recent_episode['recovery_days'] * 100
+        max_velocity = 2.0  # 2% per day is very fast
+        velocity_pct = min(recovery_velocity / max_velocity * 100, 100)
+    else:
+        velocity_pct = 0
+        recovery_velocity = 0
+    
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=velocity_pct,
+        title={'text': "Recovery Velocity<br><sub>Speed of comeback</sub>"},
+        domain={'x': [0, 1], 'y': [0, 1]},
+        number={'suffix': "%", 'valueformat': ".1f"},
+        gauge={
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "white"},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 25], 'color': "red"},
+                {'range': [25, 50], 'color': "orange"},
+                {'range': [50, 75], 'color': "yellow"},
+                {'range': [75, 100], 'color': "lightgreen"}
+            ],
+            'threshold': {
+                'line': {'color': "white", 'width': 4},
+                'thickness': 0.75,
+                'value': 90
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=300,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#0e1117',
+        font=dict(color='white')
+    )
+    
+    return fig
+
+def create_pain_calendar(prices):
+    """Create calendar heatmap of daily pain"""
+    dd_series = calculate_drawdowns(prices) * 100
+    
+    # Prepare data for calendar
+    df = pd.DataFrame({
+        'date': dd_series.index,
+        'drawdown': dd_series.values,
+        'year': dd_series.index.year,
+        'month': dd_series.index.month,
+        'day': dd_series.index.day,
+        'weekday': dd_series.index.weekday,
+        'week': dd_series.index.isocalendar().week
+    })
+    
+    # Create color scale
+    colors = ['green', 'yellow', 'orange', 'red', 'darkred']
+    boundaries = [0, -5, -10, -20, -30, -100]
+    
+    fig = px.density_heatmap(
+        df, 
+        x='week', 
+        y='weekday',
+        z='drawdown',
+        color_continuous_scale=colors,
+        labels={'weekday': 'Day', 'week': 'Week', 'drawdown': 'DD%'},
+        title="📅 Pain Calendar - When It Hurts Most",
+        height=400
+    )
+    
+    fig.update_layout(
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#0e1117',
+        font=dict(color='white')
+    )
+    
+    return fig
+
+def create_drawdown_story(episode, symbol):
+    """Generate narrative for a drawdown episode"""
+    depth = abs(episode['max_drawdown'] * 100)
+    duration = episode['duration_days']
+    
+    # Generate relatable comparisons
+    if depth > 50:
+        comparison = "💀 Like losing half your life savings"
+        severity = "catastrophic"
+        emoji = "🚨"
+    elif depth > 30:
+        comparison = "😱 Like your house losing a year's worth of appreciation"
+        severity = "severe"
+        emoji = "⚠️"
+    elif depth > 20:
+        comparison = "😰 Like totaling your car"
+        severity = "significant"
+        emoji = "⚠️"
+    elif depth > 10:
+        comparison = "😟 Like an unexpected medical bill"
+        severity = "moderate"
+        emoji = "📉"
+    else:
+        comparison = "😐 Like a bad shopping spree"
+        severity = "mild"
+        emoji = "📊"
+    
+    # Recovery status
+    if episode['recovered']:
+        recovery_text = f"✅ **Recovered** in {episode['recovery_days']} days"
+        if episode['recovery_days'] < 30:
+            recovery_speed = "Lightning fast recovery! ⚡"
+        elif episode['recovery_days'] < 90:
+            recovery_speed = "Quick recovery 🏃"
+        elif episode['recovery_days'] < 180:
+            recovery_speed = "Steady recovery 🚶"
+        else:
+            recovery_speed = "Long road to recovery 🐢"
+    else:
+        days_underwater = (datetime.now().date() - episode['bottom_date'].date()).days
+        recovery_text = f"❌ **Still underwater** for {days_underwater} days"
+        recovery_speed = "Still waiting for recovery... ⏳"
+    
+    story = f"""
+    ### {emoji} The {episode['start_date'].strftime('%B %Y')} {severity.title()} Drawdown
+    
+    **The Damage:** -{depth:.1f}% in {episode['fall_days']} days  
+    **Relatable Pain:** {comparison}  
+    **Total Duration:** {duration} days underwater  
+    {recovery_text}  
+    **Recovery Speed:** {recovery_speed}  
+    
+    **What $10,000 became:** ${10000 * (1 + episode['max_drawdown']):.0f}  
+    **Velocity:** Falling at {episode['velocity']*100:.1f}% per day
+    """
+    
+    return story
+
+def create_decision_helper(current_dd, episodes):
+    """Create a 'Should I Worry?' decision helper"""
+    
+    # Historical context
+    if episodes:
+        worse_episodes = sum(1 for e in episodes if e['max_drawdown'] < current_dd)
+        percentile = (worse_episodes / len(episodes)) * 100
+    else:
+        percentile = 0
+    
+    # Decision logic
+    if current_dd > -2:
+        status = "🟢 **All Clear**"
+        action = "Normal market noise. Stay the course."
+        color = "green"
+    elif current_dd > -5:
+        status = "🟡 **Minor Turbulence**"
+        action = "No action needed. This is normal."
+        color = "yellow"
+    elif current_dd > -10:
+        status = "🟠 **Caution Zone**"
+        action = "Review your risk tolerance. Consider your timeline."
+        color = "orange"
+    elif current_dd > -20:
+        status = "🔴 **Significant Drawdown**"
+        action = "Don't panic sell. Review your investment thesis."
+        color = "red"
+    else:
+        status = "💀 **Major Drawdown**"
+        action = "Crisis mode. Stick to your plan, history shows recovery."
+        color = "darkred"
+    
+    return {
+        'status': status,
+        'action': action,
+        'percentile': percentile,
+        'color': color,
+        'current_dd': current_dd
+    }
+
+def create_comparison_chart(prices_dict, episodes_dict):
+    """Compare multiple stocks' drawdown behavior"""
+    fig = go.Figure()
+    
+    colors = px.colors.qualitative.Set1
+    
+    for i, (symbol, prices) in enumerate(prices_dict.items()):
+        dd = calculate_drawdowns(prices) * 100
         
-        valley_x = p['Valley']
         fig.add_trace(go.Scatter(
-            x=[valley_x], y=[i], mode='markers',
-            marker=dict(symbol='diamond', size=10, color='white', line=dict(color=color, width=2)),
-            showlegend=False, hoverinfo='skip'
+            x=dd.index,
+            y=dd.values,
+            name=symbol,
+            line=dict(color=colors[i % len(colors)], width=2),
+            opacity=0.7,
+            hovertemplate=f'{symbol}<br>Date: %{{x}}<br>DD: %{{y:.1f}}%<extra></extra>'
         ))
     
     fig.update_layout(
-        title="Drawdown Timeline - Duration & Severity View",
-        xaxis_title="Time", yaxis_title="Drawdown Events (ranked by severity)",
-        height=700, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8'), showlegend=False, yaxis=dict(showticklabels=False)
-    )
-    
-    fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=False)
-    
-    return fig
-
-def create_drawdown_bubble_chart(stats):
-    """Bubble chart: start date vs depth, size = duration"""
-    periods = stats['Drawdown Periods']
-    
-    if not periods:
-        return None
-    
-    start_dates = [p['Start'] for p in periods]
-    depths = [abs(p['Max Drawdown'] * 100) for p in periods]
-    durations = [p['Duration (days)'] for p in periods]
-    recovery_times = [p['Recovery Time (days)'] if p['Recovery Time (days)'] else 0 for p in periods]
-    recovered_mask = [p['Recovery'] is not None for p in periods]
-    
-    fig = go.Figure()
-    
-    # Recovered drawdowns
-    recovered_dates = [d for d, r in zip(start_dates, recovered_mask) if r]
-    recovered_depths = [depth for depth, r in zip(depths, recovered_mask) if r]
-    recovered_durs = [dur for dur, r in zip(durations, recovered_mask) if r]
-    recovered_times = [rt for rt, r in zip(recovery_times, recovered_mask) if r]
-    
-    recovered_text = []
-    for d, depth, dur, rt in zip(recovered_dates, recovered_depths, recovered_durs, recovered_times):
-        recovered_text.append(f"Start: {d.strftime('%Y-%m-%d')}<br>DD: {depth:.1f}%<br>Duration: {dur} days<br>Recovery: {rt} days")
-    
-    fig.add_trace(go.Scatter(
-        x=recovered_dates, y=recovered_depths, mode='markers',
-        marker=dict(
-            size=[dur/5 for dur in recovered_durs],
-            color=recovered_times, colorscale='Greens', showscale=True,
-            colorbar=dict(title="Recovery<br>Time (days)", x=1.15),
-            line=dict(color='white', width=1), sizemode='diameter'
-        ),
-        name='Recovered', text=recovered_text, hovertemplate='%{text}<extra></extra>'
-    ))
-    
-    # Not recovered
-    not_recovered_dates = [d for d, r in zip(start_dates, recovered_mask) if not r]
-    not_recovered_depths = [depth for depth, r in zip(depths, recovered_mask) if not r]
-    not_recovered_durs = [dur for dur, r in zip(durations, recovered_mask) if not r]
-    
-    not_recovered_text = []
-    for d, depth, dur in zip(not_recovered_dates, not_recovered_depths, not_recovered_durs):
-        not_recovered_text.append(f"Start: {d.strftime('%Y-%m-%d')}<br>DD: {depth:.1f}%<br>Duration: {dur} days<br>Status: Ongoing")
-    
-    fig.add_trace(go.Scatter(
-        x=not_recovered_dates, y=not_recovered_depths, mode='markers',
-        marker=dict(
-            size=[dur/5 for dur in not_recovered_durs],
-            color='#ff4757', line=dict(color='white', width=1), sizemode='diameter'
-        ),
-        name='Not Recovered', text=not_recovered_text, hovertemplate='%{text}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title="Drawdown Bubble Chart - Timeline vs Severity<br><sub>Bubble size = Duration</sub>",
-        xaxis_title="Start Date", yaxis_title="Maximum Drawdown (%)",
-        height=600, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8'), hovermode='closest',
-        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor='rgba(26, 29, 38, 0.8)')
-    )
-    
-    fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=True)
-    
-    return fig
-
-def create_drawdown_magnitude_duration_scatter(stats):
-    """Scatter plot of drawdown magnitude vs duration"""
-    periods = stats['Drawdown Periods']
-    
-    if not periods:
-        return None
-    
-    magnitudes = [abs(p['Max Drawdown'] * 100) for p in periods]
-    durations = [p['Duration (days)'] for p in periods]
-    recovery_times = [p['Recovery Time (days)'] if p['Recovery Time (days)'] else 0 for p in periods]
-    
-    text_labels = []
-    for p in periods:
-        text_labels.append(
-            f"Start: {p['Start'].strftime('%Y-%m-%d')}<br>Valley: {p['Valley'].strftime('%Y-%m-%d')}<br>DD: {abs(p['Max Drawdown']*100):.1f}%<br>Duration: {p['Duration (days)']} days"
+        title="Drawdown Comparison - Who Handles Pain Better?",
+        xaxis_title="",
+        yaxis_title="Drawdown (%)",
+        height=500,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#0e1117',
+        font=dict(color='white'),
+        hovermode='x unified',
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(0,0,0,0.5)'
         )
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(
-        x=durations, y=magnitudes, mode='markers',
-        marker=dict(size=12, color=recovery_times, colorscale='Reds',
-                   showscale=True, line=dict(color='white', width=1),
-                   colorbar=dict(title="Recovery<br>Days")),
-        text=text_labels, hovertemplate='%{text}<extra></extra>'
-    ))
-    
-    fig.update_layout(
-        title="Drawdown Magnitude vs Duration",
-        xaxis_title="Duration (days)", yaxis_title="Max Drawdown (%)",
-        height=500, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8'), hovermode='closest'
     )
     
-    fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-    fig.update_yaxes(gridcolor='#262a33', showgrid=True)
-    
-    return fig
-
-def create_recovery_analysis(stats):
-    """Detailed recovery time analysis"""
-    periods = [p for p in stats['Drawdown Periods'] if p['Recovery Time (days)'] is not None]
-    
-    if not periods:
-        return None
-    
-    recovery_times = [p['Recovery Time (days)'] for p in periods]
-    magnitudes = [abs(p['Max Drawdown'] * 100) for p in periods]
-    
-    fig = make_subplots(rows=1, cols=2, subplot_titles=('Recovery Time Distribution', 'Recovery Efficiency'))
-    
-    fig.add_trace(go.Histogram(x=recovery_times, nbinsx=20,
-                              marker=dict(color='#00d4ff', line=dict(color='white', width=1))),
-                 row=1, col=1)
-    
-    efficiency = [m / r if r > 0 else 0 for m, r in zip(magnitudes, recovery_times)]
-    
-    eff_text = []
-    for m, r, e in zip(magnitudes, recovery_times, efficiency):
-        eff_text.append(f"DD: {m:.1f}%<br>Recovery: {r} days<br>Efficiency: {e:.2f}")
-    
-    fig.add_trace(go.Scatter(x=magnitudes, y=recovery_times, mode='markers',
-                            marker=dict(size=10, color=efficiency, colorscale='RdYlGn_r',
-                                      showscale=True, colorbar=dict(title="DD/Day", x=1.15)),
-                            text=eff_text, hovertemplate='%{text}<extra></extra>'), row=1, col=2)
-    
-    fig.update_layout(height=400, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-                     font=dict(color='#8b92a8'), showlegend=False)
-    
-    fig.update_xaxes(title_text="Recovery Time (days)", gridcolor='#262a33', showgrid=True, row=1, col=1)
-    fig.update_xaxes(title_text="Drawdown Magnitude (%)", gridcolor='#262a33', showgrid=True, row=1, col=2)
-    fig.update_yaxes(title_text="Frequency", gridcolor='#262a33', showgrid=True, row=1, col=1)
-    fig.update_yaxes(title_text="Recovery Time (days)", gridcolor='#262a33', showgrid=True, row=1, col=2)
-    
-    return fig
-
-def create_drawdown_heatmap(stats):
-    """Create a heatmap of drawdowns over time"""
-    drawdowns = stats['Drawdown Series']
-    
-    monthly_dd = drawdowns.resample('M').min() * 100
-    
-    years = monthly_dd.index.year.unique()
-    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    
-    matrix = []
-    for year in years:
-        year_data = monthly_dd[monthly_dd.index.year == year]
-        row = [year_data[year_data.index.month == m].values[0] if len(year_data[year_data.index.month == m]) > 0 else 0 
-               for m in range(1, 13)]
-        matrix.append(row)
-    
-    text_matrix = [[f"{val:.1f}%" for val in row] for row in matrix]
-    
-    fig = go.Figure(data=go.Heatmap(
-        z=matrix, x=months, y=years, colorscale='RdYlGn', zmid=0, reversescale=True,
-        text=text_matrix, texttemplate='%{text}', textfont={"size": 8},
-        colorbar=dict(title="DD %")
-    ))
-    
-    fig.update_layout(
-        title="Monthly Drawdown Heatmap",
-        xaxis_title="Month", yaxis_title="Year",
-        height=400, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-        font=dict(color='#8b92a8')
-    )
-    
-    return fig
-
-def create_aggregate_sp500_distributions(periods_df):
-    """Create comprehensive distribution plots"""
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=('Drawdown Magnitude Distribution', 'Duration Distribution',
-                       'Recovery Time Distribution', 'Drawdowns by Year'),
-        specs=[[{'type': 'histogram'}, {'type': 'histogram'}],
-               [{'type': 'histogram'}, {'type': 'bar'}]]
-    )
-    
-    magnitudes = periods_df['Max Drawdown'] * 100
-    fig.add_trace(go.Histogram(x=magnitudes, nbinsx=50,
-                              marker=dict(color='#ff4757', line=dict(color='white', width=0.5)),
-                              name='Magnitude'), row=1, col=1)
-    
-    durations = periods_df['Duration (days)']
-    fig.add_trace(go.Histogram(x=durations, nbinsx=50,
-                              marker=dict(color='#ffa502', line=dict(color='white', width=0.5)),
-                              name='Duration'), row=1, col=2)
-    
-    recovery_data = periods_df[periods_df['Recovery Time (days)'].notna()]['Recovery Time (days)']
-    fig.add_trace(go.Histogram(x=recovery_data, nbinsx=50,
-                              marker=dict(color='#00d4ff', line=dict(color='white', width=0.5)),
-                              name='Recovery'), row=2, col=1)
-    
-    periods_df['Year'] = pd.to_datetime(periods_df['Start']).dt.year
-    yearly_counts = periods_df['Year'].value_counts().sort_index()
-    fig.add_trace(go.Bar(x=yearly_counts.index, y=yearly_counts.values,
-                        marker=dict(color='#2ed573', line=dict(color='white', width=0.5)),
-                        name='Count'), row=2, col=2)
-    
-    fig.update_layout(height=800, showlegend=False, plot_bgcolor='#0e1117',
-                     paper_bgcolor='#1a1d26', font=dict(color='#8b92a8'))
-    
-    fig.update_xaxes(title_text="Drawdown (%)", gridcolor='#262a33', showgrid=True, row=1, col=1)
-    fig.update_xaxes(title_text="Duration (days)", gridcolor='#262a33', showgrid=True, row=1, col=2)
-    fig.update_xaxes(title_text="Recovery Time (days)", gridcolor='#262a33', showgrid=True, row=2, col=1)
-    fig.update_xaxes(title_text="Year", gridcolor='#262a33', showgrid=True, row=2, col=2)
-    
-    for i in range(1, 3):
-        for j in range(1, 3):
-            fig.update_yaxes(gridcolor='#262a33', showgrid=True, row=i, col=j)
-    
-    return fig
-
-def create_sp500_scatter_3d(periods_df):
-    """3D scatter of magnitude vs duration vs recovery"""
-    filtered = periods_df[periods_df['Recovery Time (days)'].notna()].copy()
-    filtered['Magnitude'] = abs(filtered['Max Drawdown'] * 100)
-    
-    fig = go.Figure(data=[go.Scatter3d(
-        x=filtered['Magnitude'],
-        y=filtered['Duration (days)'],
-        z=filtered['Recovery Time (days)'],
-        mode='markers',
-        marker=dict(
-            size=4, color=filtered['Magnitude'], colorscale='Reds',
-            showscale=True, colorbar=dict(title="DD %"),
-            line=dict(color='white', width=0.5)
-        ),
-        text=filtered['Symbol'],
-        hovertemplate='<b>%{text}</b><br>DD: %{x:.1f}%<br>Duration: %{y} days<br>Recovery: %{z} days<extra></extra>'
-    )])
-    
-    fig.update_layout(
-        title="3D Analysis: Magnitude vs Duration vs Recovery",
-        scene=dict(
-            xaxis=dict(title='Drawdown Magnitude (%)', gridcolor='#262a33', backgroundcolor='#0e1117'),
-            yaxis=dict(title='Duration (days)', gridcolor='#262a33', backgroundcolor='#0e1117'),
-            zaxis=dict(title='Recovery Time (days)', gridcolor='#262a33', backgroundcolor='#0e1117'),
-            bgcolor='#0e1117'
-        ),
-        height=600, paper_bgcolor='#1a1d26', font=dict(color='#8b92a8')
-    )
-    
-    return fig
-
-def create_box_plots_comparison(periods_df):
-    """Box plots comparing drawdown metrics"""
-    fig = make_subplots(rows=1, cols=3, subplot_titles=('Magnitude', 'Duration', 'Recovery Time'))
-    
-    fig.add_trace(go.Box(y=periods_df['Max Drawdown'] * 100, name='Magnitude',
-                        marker=dict(color='#ff4757'), boxmean='sd'), row=1, col=1)
-    
-    fig.add_trace(go.Box(y=periods_df['Duration (days)'], name='Duration',
-                        marker=dict(color='#ffa502'), boxmean='sd'), row=1, col=2)
-    
-    recovery_data = periods_df[periods_df['Recovery Time (days)'].notna()]['Recovery Time (days)']
-    fig.add_trace(go.Box(y=recovery_data, name='Recovery',
-                        marker=dict(color='#00d4ff'), boxmean='sd'), row=1, col=3)
-    
-    fig.update_layout(height=400, showlegend=False, plot_bgcolor='#0e1117',
-                     paper_bgcolor='#1a1d26', font=dict(color='#8b92a8'))
-    
-    fig.update_yaxes(title_text="Drawdown (%)", gridcolor='#262a33', showgrid=True, row=1, col=1)
-    fig.update_yaxes(title_text="Days", gridcolor='#262a33', showgrid=True, row=1, col=2)
-    fig.update_yaxes(title_text="Days", gridcolor='#262a33', showgrid=True, row=1, col=3)
+    fig.update_yaxis(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
+    fig.update_xaxis(gridcolor='#1e3a5f')
     
     return fig
 
 # ==================== MAIN APP ====================
 
 def main():
-    st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>📉 S&P 500 Drawdown Analysis</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8b92a8; margin-top: 5px;'>Comprehensive risk analysis for the entire market</p>", unsafe_allow_html=True)
+    # Header
+    st.markdown("""
+    <h1 style='text-align: center; font-size: 3em; margin-bottom: 0;'>
+    🌊 Drawdown Intelligence Lab
+    </h1>
+    <p style='text-align: center; color: #8b92a8; font-size: 1.2em; margin-top: 0;'>
+    Understanding market pain through stories, not just statistics
+    </p>
+    """, unsafe_allow_html=True)
+    
     st.markdown("---")
     
+    # Sidebar
     with st.sidebar:
-        st.markdown("### Configuration")
+        st.markdown("### 🎛️ Control Panel")
         
-        analysis_type = st.radio(
-            "Analysis Type",
-            options=["Individual Stock", "Full S&P 500"],
-            help="Choose to analyze a single stock or the entire S&P 500"
+        analysis_mode = st.radio(
+            "Analysis Mode",
+            ["🎯 Individual Stock", "📊 Index Comparison", "🏆 S&P 500 Analysis"],
+            help="Choose your analysis type"
         )
         
         period = st.selectbox(
-            "Analysis Period",
-            options=["1y", "2y", "5y", "max"],
-            index=1,
-            help="Historical data period"
+            "Time Machine Setting",
+            ["6mo", "1y", "2y", "5y", "max"],
+            index=2,
+            help="How far back to analyze"
         )
         
-        if analysis_type == "Individual Stock":
-            symbol = st.text_input("Stock Symbol", value="AAPL", help="Enter ticker symbol").upper()
-            analyze_button = st.button("🔍 Analyze Stock", type="primary", use_container_width=True)
+        if analysis_mode == "🎯 Individual Stock":
+            symbol = st.text_input("Stock Symbol", "AAPL").upper()
+            symbols = [symbol]
+        elif analysis_mode == "📊 Index Comparison":
+            symbols = st.multiselect(
+                "Select Stocks to Compare",
+                options=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'JNJ'],
+                default=['AAPL', 'MSFT', 'GOOGL']
+            )
         else:
-            analyze_button = st.button("🔍 Analyze S&P 500", type="primary", use_container_width=True)
+            if st.button("🔄 Load S&P 500", type="primary"):
+                with st.spinner("Loading the entire S&P 500..."):
+                    st.session_state['sp500_symbols'] = get_sp500_symbols()
+            symbols = st.session_state.get('sp500_symbols', [])[:50]  # Limit for demo
+        
+        analyze_btn = st.button("🚀 Analyze", type="primary", use_container_width=True)
         
         st.markdown("---")
-        st.markdown("### About")
-        st.markdown("""
-        This tool analyzes historical drawdowns to help you understand:
-        - Maximum losses experienced
-        - Recovery patterns
-        - Time spent underwater
-        - Risk characteristics
-        """)
         
-        st.markdown("---")
-        st.markdown("""
-        <div style='text-align: center; padding: 20px 0;'>
-            <p style='color: #5a6270; font-size: 12px; margin: 0;'>Made by</p>
-            <p style='color: #00d4ff; font-size: 16px; font-weight: 600; margin: 5px 0;'>@Gsnchez</p>
-            <a href='https://bquantfinance.com' target='_blank' style='color: #8b92a8; font-size: 13px; text-decoration: none;'>
-                🌐 bquantfinance.com
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
+        # Educational content
+        with st.expander("📚 What is a Drawdown?"):
+            st.markdown("""
+            A **drawdown** is the peak-to-trough decline during a specific period.
+            
+            Think of it as:
+            - 📉 How much you're "underwater" from your highest point
+            - 😰 The pain you feel watching your portfolio drop
+            - ⏳ The patience test while waiting for recovery
+            
+            **Why it matters:**
+            - Reveals true risk (volatility doesn't tell the whole story)
+            - Tests your emotional resilience
+            - Helps size positions appropriately
+            """)
     
-    if analysis_type == "Individual Stock":
-        if analyze_button:
-            with st.spinner(f"Analyzing {symbol}..."):
-                stats = analyze_stock(symbol, period)
-                
-                if stats is None:
-                    st.error(f"❌ Unable to load data for {symbol}. Please check the symbol and try again.")
-                else:
-                    st.session_state.last_single_analysis = stats
-                    st.session_state.last_symbol = symbol
-                    st.session_state.last_period = period
-                    display_single_stock_analysis(stats)
-        elif 'last_single_analysis' in st.session_state and st.session_state.get('last_symbol') == symbol and st.session_state.get('last_period') == period:
-            display_single_stock_analysis(st.session_state.last_single_analysis)
-    
-    elif analysis_type == "Full S&P 500":
-        if analyze_button:
-            with st.spinner("Analyzing S&P 500... This may take a few minutes."):
-                summary_df, prices, periods_df = analyze_sp500(period)
-                st.session_state.last_sp500_analysis = (summary_df, prices, periods_df)
-                st.session_state.last_sp500_period = period
-                display_sp500_analysis(summary_df, prices, periods_df, period)
-        elif 'last_sp500_analysis' in st.session_state and st.session_state.get('last_sp500_period') == period:
-            summary_df, prices, periods_df = st.session_state.last_sp500_analysis
-            display_sp500_analysis(summary_df, prices, periods_df, period)
-    
+    # Main content
+    if analyze_btn and symbols:
+        if analysis_mode == "🎯 Individual Stock":
+            display_individual_analysis(symbols[0], period)
+        elif analysis_mode == "📊 Index Comparison":
+            display_comparison_analysis(symbols, period)
+        else:
+            display_sp500_analysis(symbols, period)
     else:
+        # Welcome screen
         st.markdown("""
-        <div style='text-align: center; padding: 100px 20px;'>
-            <h2 style='color: #8b92a8;'>Welcome to S&P 500 Drawdown Analysis</h2>
-            <p style='color: #5a6270; font-size: 18px;'>Select your analysis type in the sidebar to begin</p>
-            <div style='margin-top: 60px;'>
-                <p style='color: #5a6270; font-size: 14px;'>Made by <span style='color: #00d4ff; font-weight: 600;'>@Gsnchez</span></p>
-                <a href='https://bquantfinance.com' target='_blank' style='color: #8b92a8; text-decoration: none;'>
-                    🌐 bquantfinance.com
-                </a>
+        <div style='text-align: center; padding: 50px;'>
+            <h2>Welcome to the Drawdown Intelligence Lab</h2>
+            <p style='font-size: 1.2em; color: #8b92a8;'>
+            Where we turn market pain into actionable insights
+            </p>
+            
+            <div style='margin-top: 50px;'>
+                <h3>Choose Your Adventure:</h3>
+                <p>🎯 <b>Individual Stock</b> - Deep dive into one stock's pain points</p>
+                <p>📊 <b>Index Comparison</b> - Compare how different stocks handle drawdowns</p>
+                <p>🏆 <b>S&P 500 Analysis</b> - Market-wide pain assessment</p>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-def display_single_stock_analysis(stats):
-    """Display comprehensive analysis for a single stock"""
-    st.markdown("### Key Metrics")
-    col1, col2, col3, col4, col5 = st.columns(5)
+def display_individual_analysis(symbol, period):
+    """Display analysis for individual stock"""
+    
+    prices = load_stock_data(symbol, period)
+    
+    if prices is None or len(prices) < 50:
+        st.error(f"Unable to load sufficient data for {symbol}")
+        return
+    
+    episodes = get_drawdown_episodes(prices)
+    current_dd = calculate_drawdowns(prices).iloc[-1] * 100
+    
+    # Hero metrics
+    st.markdown("### 🎯 Current Situation")
+    
+    decision = create_decision_helper(current_dd, episodes)
+    
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Max Drawdown", f"{stats['Max Drawdown (%)']:.2f}%")
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>{decision['status']}</h3>
+            <p style='font-size: 2em; margin: 0;'>{current_dd:.1f}%</p>
+            <p style='margin: 0;'>Current Drawdown</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col2:
-        st.metric("Current Drawdown", f"{stats['Current Drawdown (%)']:.2f}%")
+        worst_dd = min(e['max_drawdown'] for e in episodes) * 100 if episodes else 0
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>😱 Worst Ever</h3>
+            <p style='font-size: 2em; margin: 0;'>{worst_dd:.1f}%</p>
+            <p style='margin: 0;'>Maximum Pain</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col3:
-        st.metric("# of Drawdowns", f"{stats['Number of Drawdowns']}")
+        pain_index = calculate_pain_index(calculate_drawdowns(prices))
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>💊 Pain Index</h3>
+            <p style='font-size: 2em; margin: 0;'>{pain_index:.1f}</p>
+            <p style='margin: 0;'>Average Pain</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col4:
-        st.metric("Avg Duration", f"{stats['Avg DD Duration (days)']:.0f} days")
-    with col5:
-        st.metric("Recovery Rate", f"{stats['Recovery Rate (%)']:.1f}%")
+        if episodes:
+            recovery_rate = sum(1 for e in episodes if e['recovered']) / len(episodes) * 100
+        else:
+            recovery_rate = 0
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>💪 Recovery Rate</h3>
+            <p style='font-size: 2em; margin: 0;'>{recovery_rate:.0f}%</p>
+            <p style='margin: 0;'>Comeback Ratio</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    st.markdown("---")
+    # Decision helper box
+    st.markdown(f"""
+    <div class='insight-box'>
+        <h3>🤔 What Should You Do?</h3>
+        <p><b>{decision['action']}</b></p>
+        <p>This drawdown is worse than {decision['percentile']:.0f}% of historical drawdowns.</p>
+        <p>Remember: Every drawdown feels like the worst one when you're in it.</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    st.markdown("### 📊 Complete Drawdown Timeline")
-    fig = create_drawdown_timeline(stats)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("---")
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🔍 Individual Drawdowns", "📈 Magnitude Analysis", "⏱️ Duration & Recovery",
-        "🗓️ Temporal Patterns", "📋 Detailed Table"
+    # Main visualizations
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🏊 Underwater View", "📖 Drawdown Stories", "📊 Analytics", "🎯 Decision Tools"
     ])
     
     with tab1:
-        st.markdown("### Individual Drawdown Events")
+        st.plotly_chart(create_underwater_chart(prices, episodes), use_container_width=True)
         
-        chart_type = st.radio(
-            "Visualization Style",
-            options=["Small Multiples (Individual Profiles)", "Timeline Bars", "Bubble Chart"],
-            horizontal=True
-        )
+        if episodes and episodes[0]['recovered']:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(create_recovery_velocity_gauge(episodes), use_container_width=True)
+            with col2:
+                # Recovery stats
+                recoveries = [e for e in episodes if e['recovered']]
+                if recoveries:
+                    avg_recovery = np.mean([e['recovery_days'] for e in recoveries])
+                    st.markdown(f"""
+                    <div class='metric-card'>
+                        <h3>⏱️ Recovery Stats</h3>
+                        <p>Average: {avg_recovery:.0f} days</p>
+                        <p>Fastest: {min(e['recovery_days'] for e in recoveries)} days</p>
+                        <p>Slowest: {max(e['recovery_days'] for e in recoveries)} days</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    with tab2:
+        st.markdown("### 📚 Your Drawdown History")
         
-        if chart_type == "Small Multiples (Individual Profiles)":
-            st.info("📊 Each drawdown shown in its own chart - best for comparing shapes and profiles")
-            fig = create_drawdown_small_multiples(stats)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
-        
-        elif chart_type == "Timeline Bars":
-            st.info("📅 Horizontal bars showing when drawdowns occurred, colored by severity, with valley markers")
-            fig = create_drawdown_timeline_bars(stats)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
-        
+        if episodes:
+            # Show stories for top 3 worst drawdowns
+            for i, episode in enumerate(episodes[:3], 1):
+                with st.expander(f"Story #{i}: {episode['start_date'].strftime('%B %Y')} Drawdown"):
+                    st.markdown(create_drawdown_story(episode, symbol))
+                    
+                    # Mini chart for this episode
+                    fig = go.Figure()
+                    
+                    # Get price series for this episode period
+                    episode_start = episode['peak_date']
+                    episode_end = episode['recovery_date'] if episode['recovery_date'] else prices.index[-1]
+                    episode_prices = prices[episode_start:episode_end]
+                    
+                    fig.add_trace(go.Scatter(
+                        x=episode_prices.index,
+                        y=episode_prices.values,
+                        mode='lines',
+                        line=dict(color='lightblue', width=2),
+                        name='Price'
+                    ))
+                    
+                    # Mark key points
+                    fig.add_trace(go.Scatter(
+                        x=[episode['peak_date'], episode['bottom_date']],
+                        y=[episode['peak_price'], episode['bottom_price']],
+                        mode='markers+text',
+                        marker=dict(size=10, color=['green', 'red']),
+                        text=['Peak', 'Bottom'],
+                        textposition='top center',
+                        showlegend=False
+                    ))
+                    
+                    fig.update_layout(
+                        height=300,
+                        plot_bgcolor='#0e1117',
+                        paper_bgcolor='#0e1117',
+                        font=dict(color='white'),
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("🎯 Bubble chart: X=Start Date, Y=Depth, Size=Duration, Color=Recovery Time")
-            fig = create_drawdown_bubble_chart(stats)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+            st.info("No significant drawdowns found in this period!")
+    
+    with tab3:
+        # Detailed analytics
+        st.markdown("### 📈 Deep Analytics")
         
-        st.markdown("---")
+        # Regime analysis
+        regime = get_market_regime(prices)
+        regime_counts = regime.value_counts()
         
         col1, col2 = st.columns(2)
-        with col1:
-            fig = create_drawdown_magnitude_duration_scatter(stats)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
         
-        with col2:
-            periods = sorted(stats['Drawdown Periods'], key=lambda x: x['Max Drawdown'])[:10]
-            dates = [p['Start'].strftime('%Y-%m-%d') for p in periods]
-            values = [abs(p['Max Drawdown'] * 100) for p in periods]
-            
-            fig = go.Figure(go.Bar(
-                x=values, y=dates, orientation='h',
-                marker=dict(color=values, colorscale='Reds',
-                           line=dict(color='white', width=0.5)),
-                text=[f"{v:.2f}%" for v in values],
-                textposition='outside'
-            ))
+        with col1:
+            # Regime pie chart
+            fig = go.Figure(data=[go.Pie(
+                labels=regime_counts.index,
+                values=regime_counts.values,
+                marker=dict(colors=['green', 'red', 'gray']),
+                hole=0.3
+            )])
             
             fig.update_layout(
-                title="Top 10 Worst Drawdowns",
-                xaxis_title="Drawdown Depth (%)", yaxis_title="",
-                height=400, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-                font=dict(color='#8b92a8'), yaxis=dict(autorange="reversed"),
-                showlegend=False
+                title="Market Regime Distribution",
+                height=300,
+                plot_bgcolor='#0e1117',
+                paper_bgcolor='#0e1117',
+                font=dict(color='white')
             )
-            
-            fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-            fig.update_yaxes(gridcolor='#262a33', showgrid=False)
             
             st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown("---")
+        with col2:
+            # Drawdown distribution
+            if episodes:
+                dd_magnitudes = [abs(e['max_drawdown']) * 100 for e in episodes]
+                
+                fig = go.Figure(data=[go.Histogram(
+                    x=dd_magnitudes,
+                    nbinsx=20,
+                    marker=dict(color='lightcoral')
+                )])
+                
+                fig.update_layout(
+                    title="Drawdown Magnitude Distribution",
+                    xaxis_title="Drawdown (%)",
+                    yaxis_title="Frequency",
+                    height=300,
+                    plot_bgcolor='#0e1117',
+                    paper_bgcolor='#0e1117',
+                    font=dict(color='white')
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown("#### All Drawdown Events")
-        if stats['Drawdown Periods']:
-            periods_data = []
-            for i, p in enumerate(stats['Drawdown Periods'], 1):
-                periods_data.append({
-                    '#': i,
-                    'Start': p['Start'].strftime('%Y-%m-%d'),
-                    'Valley': p['Valley'].strftime('%Y-%m-%d'),
-                    'End': p['End'].strftime('%Y-%m-%d'),
-                    'Recovery': p['Recovery'].strftime('%Y-%m-%d') if p['Recovery'] else 'Ongoing',
-                    'Max DD (%)': f"{p['Max Drawdown'] * 100:.2f}",
-                    'Duration (days)': p['Duration (days)'],
-                    'Recovery (days)': p['Recovery Time (days)'] if p['Recovery Time (days)'] else 'N/A'
-                })
-            df = pd.DataFrame(periods_data)
-            st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+        # Statistics table
+        if episodes:
+            stats_df = pd.DataFrame({
+                'Metric': [
+                    'Number of Drawdowns',
+                    'Average Drawdown (%)',
+                    'Average Duration (days)',
+                    'Average Recovery (days)',
+                    'Worst Month',
+                    'Best Month After Drawdown'
+                ],
+                'Value': [
+                    len(episodes),
+                    f"{np.mean([abs(e['max_drawdown']) * 100 for e in episodes]):.1f}%",
+                    f"{np.mean([e['duration_days'] for e in episodes]):.0f}",
+                    f"{np.mean([e['recovery_days'] for e in episodes if e['recovered']]):.0f}",
+                    calculate_drawdowns(prices).groupby(pd.Grouper(freq='M')).min().idxmin().strftime('%B %Y'),
+                    "Coming soon"
+                ]
+            })
+            
+            st.table(stats_df)
     
-    with tab2:
-        st.markdown("### Drawdown Magnitude Analysis")
+    with tab4:
+        st.markdown("### 🎯 Decision Support Tools")
         
-        if stats['Drawdown Periods']:
-            magnitudes = [abs(p['Max Drawdown'] * 100) for p in stats['Drawdown Periods']]
+        # Risk tolerance calculator
+        st.markdown("""
+        <div class='warning-box'>
+            <h3>🎰 Your Risk Reality Check</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            investment = st.number_input("Your Investment ($)", value=10000, step=1000)
+            tolerance = st.slider("Max Loss You Can Stomach (%)", 0, 50, 20)
+        
+        with col2:
+            if episodes:
+                worst = abs(min(e['max_drawdown'] for e in episodes) * 100)
+                potential_loss = investment * worst / 100
+                
+                if worst > tolerance:
+                    st.error(f"""
+                    ⚠️ **Reality Check!**  
+                    Historical worst: -{worst:.1f}%  
+                    Your tolerance: -{tolerance}%  
+                    You'd lose: ${potential_loss:.0f}  
+                    
+                    **You might want to reconsider your position size!**
+                    """)
+                else:
+                    st.success(f"""
+                    ✅ **Within Tolerance**  
+                    Historical worst: -{worst:.1f}%  
+                    Your tolerance: -{tolerance}%  
+                    Max historical loss: ${potential_loss:.0f}
+                    """)
+        
+        # Historical comparison tool
+        st.markdown("### 🕰️ Time Machine: What If You Bought At...")
+        
+        if episodes and len(episodes) > 0:
+            selected_episode = st.selectbox(
+                "Select a historical peak",
+                options=range(len(episodes)),
+                format_func=lambda i: f"{episodes[i]['peak_date'].strftime('%B %Y')} (fell {abs(episodes[i]['max_drawdown']*100):.1f}%)"
+            )
+            
+            episode = episodes[selected_episode]
             
             col1, col2, col3 = st.columns(3)
+            
             with col1:
-                st.metric("Average Magnitude", f"{np.mean(magnitudes):.2f}%")
+                st.metric("You'd be down", f"{abs(episode['max_drawdown']*100):.1f}%")
             with col2:
-                st.metric("Median Magnitude", f"{np.median(magnitudes):.2f}%")
+                st.metric("For this many days", f"{episode['duration_days']}")
             with col3:
-                st.metric("Std Deviation", f"{np.std(magnitudes):.2f}%")
-            
-            fig = go.Figure()
-            fig.add_trace(go.Histogram(x=magnitudes, nbinsx=15,
-                                      marker=dict(color='#ff4757', line=dict(color='white', width=1))))
-            fig.update_layout(title="Distribution of Drawdown Magnitudes",
-                            xaxis_title="Drawdown (%)", yaxis_title="Frequency",
-                            height=400, plot_bgcolor='#0e1117', paper_bgcolor='#1a1d26',
-                            font=dict(color='#8b92a8'), showlegend=False)
-            fig.update_xaxes(gridcolor='#262a33', showgrid=True)
-            fig.update_yaxes(gridcolor='#262a33', showgrid=True)
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
-        st.markdown("### Duration & Recovery Analysis")
-        
-        fig = create_recovery_analysis(stats)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Duration Statistics")
-            if stats['Drawdown Periods']:
-                durations = [p['Duration (days)'] for p in stats['Drawdown Periods']]
-                st.metric("Max Duration", f"{max(durations)} days")
-                st.metric("Avg Duration", f"{np.mean(durations):.1f} days")
-                st.metric("Median Duration", f"{np.median(durations):.0f} days")
-        
-        with col2:
-            st.markdown("#### Recovery Statistics")
-            recovery_times = [p['Recovery Time (days)'] for p in stats['Drawdown Periods'] 
-                            if p['Recovery Time (days)'] is not None]
-            if recovery_times:
-                st.metric("Max Recovery", f"{max(recovery_times)} days")
-                st.metric("Avg Recovery", f"{np.mean(recovery_times):.1f} days")
-                st.metric("Median Recovery", f"{np.median(recovery_times):.0f} days")
-            else:
-                st.info("No completed recoveries in dataset")
-    
-    with tab4:
-        st.markdown("### Temporal Patterns")
-        
-        fig = create_drawdown_heatmap(stats)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        if stats['Drawdown Periods']:
-            periods_df = pd.DataFrame(stats['Drawdown Periods'])
-            periods_df['Year'] = pd.to_datetime(periods_df['Start']).dt.year
-            
-            yearly_stats = periods_df.groupby('Year').agg({
-                'Max Drawdown': ['count', 'mean', 'min'],
-                'Duration (days)': 'mean'
-            }).round(2)
-            
-            st.markdown("#### Yearly Drawdown Statistics")
-            st.dataframe(yearly_stats, use_container_width=True)
-    
-    with tab5:
-        st.markdown("### Complete Drawdown Data")
-        
-        if stats['Drawdown Periods']:
-            full_data = []
-            for i, p in enumerate(stats['Drawdown Periods'], 1):
-                full_data.append({
-                    'Event #': i,
-                    'Start Date': p['Start'].strftime('%Y-%m-%d'),
-                    'Valley Date': p['Valley'].strftime('%Y-%m-%d'),
-                    'End Date': p['End'].strftime('%Y-%m-%d'),
-                    'Recovery Date': p['Recovery'].strftime('%Y-%m-%d') if p['Recovery'] else 'Ongoing',
-                    'Max Drawdown (%)': round(p['Max Drawdown'] * 100, 2),
-                    'Duration (days)': p['Duration (days)'],
-                    'Recovery Time (days)': p['Recovery Time (days)'] if p['Recovery Time (days)'] else None,
-                    'Days to Valley': (p['Valley'] - p['Start']).days
-                })
-            
-            df_full = pd.DataFrame(full_data)
-            st.dataframe(df_full, use_container_width=True, height=600, hide_index=True)
-            
-            csv = df_full.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Complete Data (CSV)",
-                data=csv,
-                file_name=f"{stats['Symbol']}_drawdown_analysis.csv",
-                mime="text/csv"
-            )
+                if episode['recovered']:
+                    st.metric("Recovery took", f"{episode['recovery_days']} days")
+                else:
+                    st.metric("Still waiting", "Not recovered")
 
-def display_sp500_analysis(summary_df, prices, periods_df, period):
-    """Display comprehensive aggregate S&P 500 analysis"""
-    st.success(f"✅ Analyzed {len(summary_df)} stocks with {len(periods_df)} total drawdown events")
+def display_comparison_analysis(symbols, period):
+    """Display comparison analysis for multiple stocks"""
     
-    st.markdown("### 📊 Market-Wide Aggregate Statistics")
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    st.markdown("### 🏁 Drawdown Race: Who Handles Pain Better?")
+    
+    prices_dict = {}
+    episodes_dict = {}
+    
+    # Load data
+    progress = st.progress(0)
+    for i, symbol in enumerate(symbols):
+        prices = load_stock_data(symbol, period)
+        if prices is not None and len(prices) > 50:
+            prices_dict[symbol] = prices
+            episodes_dict[symbol] = get_drawdown_episodes(prices)
+        progress.progress((i + 1) / len(symbols))
+    progress.empty()
+    
+    if not prices_dict:
+        st.error("Unable to load data for selected symbols")
+        return
+    
+    # Comparison metrics
+    comparison_data = []
+    for symbol, episodes in episodes_dict.items():
+        if episodes:
+            comparison_data.append({
+                'Symbol': symbol,
+                'Current DD (%)': calculate_drawdowns(prices_dict[symbol]).iloc[-1] * 100,
+                'Worst DD (%)': min(e['max_drawdown'] for e in episodes) * 100,
+                'Avg DD (%)': np.mean([e['max_drawdown'] for e in episodes]) * 100,
+                'Pain Index': calculate_pain_index(calculate_drawdowns(prices_dict[symbol])),
+                'Recovery Rate (%)': sum(1 for e in episodes if e['recovered']) / len(episodes) * 100,
+                'Avg Recovery (days)': np.mean([e['recovery_days'] for e in episodes if e['recovered']]) if any(e['recovered'] for e in episodes) else 0
+            })
+    
+    comparison_df = pd.DataFrame(comparison_data)
+    
+    # Display rankings
+    st.markdown("### 🏆 Performance Rankings")
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total Drawdowns", f"{len(periods_df)}")
+        st.markdown("**🛡️ Most Resilient** (Smallest worst DD)")
+        winner = comparison_df.nlargest(1, 'Worst DD (%)').iloc[0]
+        st.success(f"👑 {winner['Symbol']}: {winner['Worst DD (%)']:.1f}%")
+    
     with col2:
-        st.metric("Avg Max DD", f"{summary_df['Max Drawdown (%)'].mean():.2f}%")
+        st.markdown("**💊 Least Painful** (Lowest pain index)")
+        winner = comparison_df.nsmallest(1, 'Pain Index').iloc[0]
+        st.success(f"👑 {winner['Symbol']}: {winner['Pain Index']:.1f}")
+    
     with col3:
-        st.metric("Worst DD", f"{periods_df['Max Drawdown'].min() * 100:.2f}%")
+        st.markdown("**⚡ Fastest Recovery** (Avg days)")
+        winner = comparison_df.nsmallest(1, 'Avg Recovery (days)').iloc[0]
+        st.success(f"👑 {winner['Symbol']}: {winner['Avg Recovery (days)']:.0f} days")
+    
+    # Comparison chart
+    st.plotly_chart(create_comparison_chart(prices_dict, episodes_dict), use_container_width=True)
+    
+    # Detailed comparison table
+    st.markdown("### 📊 Detailed Comparison")
+    
+    st.dataframe(
+        comparison_df.style.format({
+            'Current DD (%)': '{:.1f}',
+            'Worst DD (%)': '{:.1f}',
+            'Avg DD (%)': '{:.1f}',
+            'Pain Index': '{:.1f}',
+            'Recovery Rate (%)': '{:.0f}',
+            'Avg Recovery (days)': '{:.0f}'
+        }).background_gradient(cmap='RdYlGn_r', subset=['Current DD (%)', 'Worst DD (%)', 'Pain Index'])
+          .background_gradient(cmap='RdYlGn', subset=['Recovery Rate (%)']),
+        use_container_width=True
+    )
+    
+    # Head-to-head battles
+    st.markdown("### ⚔️ Head-to-Head Battles")
+    
+    if len(symbols) >= 2:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fighter1 = st.selectbox("Fighter 1", symbols, index=0)
+        with col2:
+            fighter2 = st.selectbox("Fighter 2", symbols, index=1)
+        
+        if fighter1 != fighter2:
+            f1_data = comparison_df[comparison_df['Symbol'] == fighter1].iloc[0]
+            f2_data = comparison_df[comparison_df['Symbol'] == fighter2].iloc[0]
+            
+            battles = [
+                ('Current Position', 'Current DD (%)', True),  # True means lower is better
+                ('Historical Toughness', 'Worst DD (%)', False),  # False means higher is better
+                ('Pain Tolerance', 'Pain Index', True),
+                ('Recovery Power', 'Recovery Rate (%)', False),
+                ('Speed', 'Avg Recovery (days)', True)
+            ]
+            
+            f1_wins = 0
+            f2_wins = 0
+            
+            for battle_name, metric, lower_better in battles:
+                if lower_better:
+                    winner = fighter1 if f1_data[metric] < f2_data[metric] else fighter2
+                    if winner == fighter1:
+                        f1_wins += 1
+                    else:
+                        f2_wins += 1
+                else:
+                    winner = fighter1 if f1_data[metric] > f2_data[metric] else fighter2
+                    if winner == fighter1:
+                        f1_wins += 1
+                    else:
+                        f2_wins += 1
+                
+                col1, col2, col3 = st.columns([2, 1, 2])
+                with col1:
+                    if winner == fighter1:
+                        st.success(f"{fighter1}: {f1_data[metric]:.1f}")
+                    else:
+                        st.error(f"{fighter1}: {f1_data[metric]:.1f}")
+                with col2:
+                    st.markdown(f"**{battle_name}**")
+                with col3:
+                    if winner == fighter2:
+                        st.success(f"{fighter2}: {f2_data[metric]:.1f}")
+                    else:
+                        st.error(f"{fighter2}: {f2_data[metric]:.1f}")
+            
+            st.markdown(f"### 🏆 Winner: {fighter1 if f1_wins > f2_wins else fighter2} ({max(f1_wins, f2_wins)}-{min(f1_wins, f2_wins)})")
+
+def display_sp500_analysis(symbols, period):
+    """Display S&P 500 aggregate analysis"""
+    
+    st.markdown("### 🌍 Market-Wide Pain Assessment")
+    
+    # Load data for symbols
+    prices_df = load_index_components(symbols, period)
+    
+    if prices_df.empty:
+        st.error("Unable to load S&P 500 data")
+        return
+    
+    # Calculate aggregate metrics
+    all_episodes = []
+    current_dds = []
+    
+    for symbol in prices_df.columns:
+        dd = calculate_drawdowns(prices_df[symbol])
+        current_dds.append(dd.iloc[-1] * 100)
+        
+        episodes = get_drawdown_episodes(prices_df[symbol])
+        for episode in episodes:
+            episode['symbol'] = symbol
+            all_episodes.append(episode)
+    
+    # Market health dashboard
+    st.markdown("### 🏥 Market Health Status")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        avg_dd = np.mean(current_dds)
+        health_color = "🟢" if avg_dd > -5 else "🟡" if avg_dd > -10 else "🟠" if avg_dd > -20 else "🔴"
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>{health_color} Market Health</h3>
+            <p style='font-size: 2em;'>{avg_dd:.1f}%</p>
+            <p>Average DD</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        stocks_in_dd = sum(1 for dd in current_dds if dd < -10)
+        pct_in_dd = (stocks_in_dd / len(current_dds)) * 100
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>📊 Stocks Hurting</h3>
+            <p style='font-size: 2em;'>{pct_in_dd:.0f}%</p>
+            <p>In 10%+ DD</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        if all_episodes:
+            recent_episodes = [e for e in all_episodes if (datetime.now().date() - e['start_date'].date()).days < 90]
+            st.markdown(f"""
+            <div class='metric-card'>
+                <h3>🌊 Recent Events</h3>
+                <p style='font-size: 2em;'>{len(recent_episodes)}</p>
+                <p>Last 90 days</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
     with col4:
-        avg_duration = periods_df['Duration (days)'].mean()
-        st.metric("Avg Duration", f"{avg_duration:.0f} days")
-    with col5:
-        recovered = periods_df['Recovery Time (days)'].notna().sum()
-        recovery_rate = (recovered / len(periods_df)) * 100
-        st.metric("Recovery Rate", f"{recovery_rate:.1f}%")
-    with col6:
-        avg_recovery = periods_df['Recovery Time (days)'].mean()
-        st.metric("Avg Recovery", f"{avg_recovery:.0f} days")
+        bear_market = sum(1 for dd in current_dds if dd < -20)
+        bear_pct = (bear_market / len(current_dds)) * 100
+        st.markdown(f"""
+        <div class='metric-card'>
+            <h3>🐻 Bear Territory</h3>
+            <p style='font-size: 2em;'>{bear_pct:.0f}%</p>
+            <p>In 20%+ DD</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    st.markdown("---")
+    # Market mood assessment
+    if avg_dd > -5:
+        mood = "😊 Euphoric - Markets feeling great!"
+        mood_color = "green"
+    elif avg_dd > -10:
+        mood = "😐 Cautious - Some nervousness creeping in"
+        mood_color = "yellow"
+    elif avg_dd > -20:
+        mood = "😰 Fearful - Significant stress in the system"
+        mood_color = "orange"
+    else:
+        mood = "😱 Panic - Maximum fear, potential opportunity?"
+        mood_color = "red"
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📈 Aggregate Distributions", "🎯 3D Analysis", "📊 Statistical Comparisons",
-        "🏆 Top Drawdowns", "🔍 Full Dataset"
-    ])
+    st.markdown(f"""
+    <div class='insight-box'>
+        <h2>Market Mood: {mood}</h2>
+        <p>Based on {len(current_dds)} stocks analyzed</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with tab1:
-        st.markdown("### Complete Distribution Analysis")
-        fig = create_aggregate_sp500_distributions(periods_df)
-        st.plotly_chart(fig, use_container_width=True)
+    # Worst performers
+    st.markdown("### 💀 Walking Wounded (Worst Current Drawdowns)")
+    
+    worst_current = pd.DataFrame({
+        'Symbol': prices_df.columns,
+        'Current DD (%)': current_dds
+    }).nsmallest(10, 'Current DD (%)')
+    
+    fig = go.Figure(data=[go.Bar(
+        x=worst_current['Symbol'],
+        y=worst_current['Current DD (%)'],
+        marker=dict(color=worst_current['Current DD (%)'],
+                   colorscale='Reds',
+                   showscale=False),
+        text=[f"{dd:.1f}%" for dd in worst_current['Current DD (%)']],
+        textposition='auto'
+    )])
+    
+    fig.update_layout(
+        title="Bottom 10 - Currently Suffering Most",
+        height=400,
+        plot_bgcolor='#0e1117',
+        paper_bgcolor='#0e1117',
+        font=dict(color='white')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Historical perspective
+    if all_episodes:
+        st.markdown("### 📜 Historical Perspective")
+        
+        # Group by year
+        episodes_df = pd.DataFrame(all_episodes)
+        episodes_df['year'] = pd.to_datetime(episodes_df['start_date']).dt.year
+        
+        yearly_stats = episodes_df.groupby('year').agg({
+            'max_drawdown': ['count', 'mean'],
+            'recovery_days': 'mean'
+        }).round(1)
         
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.markdown("#### Magnitude Statistics")
-            mag_stats = periods_df['Max Drawdown'].describe() * 100
-            st.dataframe(mag_stats.round(2), use_container_width=True)
+            st.markdown("**📅 Drawdowns by Year**")
+            st.bar_chart(yearly_stats[('max_drawdown', 'count')])
         
         with col2:
-            st.markdown("#### Duration Statistics")
-            dur_stats = periods_df['Duration (days)'].describe()
-            st.dataframe(dur_stats.round(2), use_container_width=True)
-    
-    with tab2:
-        st.markdown("### 3D Relationship Analysis")
-        fig = create_sp500_scatter_3d(periods_df)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("#### Key Insights")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            corr_mag_dur = periods_df[['Max Drawdown', 'Duration (days)']].corr().iloc[0, 1]
-            st.metric("Magnitude-Duration Correlation", f"{corr_mag_dur:.3f}")
-        
-        with col2:
-            filtered = periods_df[periods_df['Recovery Time (days)'].notna()]
-            corr_mag_rec = filtered[['Max Drawdown', 'Recovery Time (days)']].corr().iloc[0, 1]
-            st.metric("Magnitude-Recovery Correlation", f"{corr_mag_rec:.3f}")
-        
-        with col3:
-            corr_dur_rec = filtered[['Duration (days)', 'Recovery Time (days)']].corr().iloc[0, 1]
-            st.metric("Duration-Recovery Correlation", f"{corr_dur_rec:.3f}")
-    
-    with tab3:
-        st.markdown("### Statistical Comparisons")
-        fig = create_box_plots_comparison(periods_df)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("#### Percentile Analysis")
-        percentiles = [10, 25, 50, 75, 90, 95, 99]
-        
-        perc_data = {
-            'Percentile': [f"{p}th" for p in percentiles],
-            'Magnitude (%)': [periods_df['Max Drawdown'].quantile(p/100) * 100 for p in percentiles],
-            'Duration (days)': [periods_df['Duration (days)'].quantile(p/100) for p in percentiles],
-            'Recovery (days)': [periods_df['Recovery Time (days)'].quantile(p/100) for p in percentiles]
-        }
-        
-        perc_df = pd.DataFrame(perc_data)
-        st.dataframe(perc_df.style.format({
-            'Magnitude (%)': '{:.2f}',
-            'Duration (days)': '{:.1f}',
-            'Recovery (days)': '{:.1f}'
-        }), use_container_width=True, hide_index=True)
-    
-    with tab4:
-        st.markdown("### Worst Drawdown Events Across S&P 500")
-        
-        worst_50 = periods_df.nsmallest(50, 'Max Drawdown').copy()
-        worst_50['Max Drawdown (%)'] = worst_50['Max Drawdown'] * 100
-        worst_50['Rank'] = range(1, len(worst_50) + 1)
-        
-        display_cols = ['Rank', 'Symbol', 'Start', 'Valley', 'Max Drawdown (%)', 
-                       'Duration (days)', 'Recovery Time (days)']
-        
-        worst_50['Start'] = worst_50['Start'].dt.strftime('%Y-%m-%d')
-        worst_50['Valley'] = worst_50['Valley'].dt.strftime('%Y-%m-%d')
-        
-        st.dataframe(
-            worst_50[display_cols].style.format({
-                'Max Drawdown (%)': '{:.2f}',
-                'Duration (days)': '{:.0f}',
-                'Recovery Time (days)': '{:.0f}'
-            }),
-            use_container_width=True,
-            height=600,
-            hide_index=True
-        )
-        
-        csv = worst_50[display_cols].to_csv(index=False)
-        st.download_button(
-            label="📥 Download Top 50 Worst Drawdowns (CSV)",
-            data=csv,
-            file_name=f"sp500_top50_drawdowns_{period}.csv",
-            mime="text/csv"
-        )
-    
-    with tab5:
-        st.markdown("### Complete S&P 500 Drawdown Dataset")
-        st.info(f"📊 Total of {len(periods_df)} drawdown events across {len(summary_df)} stocks")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            min_dd = st.slider("Min Drawdown (%)", 0, 100, 0)
-        with col2:
-            selected_years = st.multiselect("Filter by Year", 
-                                           options=sorted(pd.to_datetime(periods_df['Start']).dt.year.unique()),
-                                           default=[])
-        with col3:
-            sort_by = st.selectbox("Sort by", ['Max Drawdown', 'Duration (days)', 'Recovery Time (days)'])
-        
-        filtered = periods_df.copy()
-        filtered = filtered[abs(filtered['Max Drawdown'] * 100) >= min_dd]
-        
-        if selected_years:
-            filtered['Year'] = pd.to_datetime(filtered['Start']).dt.year
-            filtered = filtered[filtered['Year'].isin(selected_years)]
-        
-        filtered = filtered.sort_values(sort_by)
-        
-        display_df = filtered.copy()
-        display_df['Max Drawdown (%)'] = display_df['Max Drawdown'] * 100
-        display_df['Start'] = pd.to_datetime(display_df['Start']).dt.strftime('%Y-%m-%d')
-        display_df['Valley'] = pd.to_datetime(display_df['Valley']).dt.strftime('%Y-%m-%d')
-        display_df['End'] = pd.to_datetime(display_df['End']).dt.strftime('%Y-%m-%d')
-        
-        display_cols = ['Symbol', 'Start', 'Valley', 'End', 'Max Drawdown (%)', 
-                       'Duration (days)', 'Recovery Time (days)']
-        
-        st.dataframe(
-            display_df[display_cols].style.format({
-                'Max Drawdown (%)': '{:.2f}',
-                'Duration (days)': '{:.0f}',
-                'Recovery Time (days)': '{:.0f}'
-            }),
-            use_container_width=True,
-            height=600,
-            hide_index=True
-        )
-        
-        st.metric("Filtered Results", f"{len(filtered)} drawdowns")
-        
-        csv = display_df[display_cols].to_csv(index=False)
-        st.download_button(
-            label="📥 Download Filtered Data (CSV)",
-            data=csv,
-            file_name=f"sp500_all_drawdowns_{period}.csv",
-            mime="text/csv"
-        )
+            st.markdown("**😰 Average Pain by Year**")
+            st.line_chart(abs(yearly_stats[('max_drawdown', 'mean')] * 100))
 
 if __name__ == "__main__":
     main()
