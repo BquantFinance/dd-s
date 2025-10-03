@@ -283,8 +283,8 @@ def create_underwater_chart(prices, episodes):
         showlegend=False
     )
     
-    fig.update_yaxis(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
-    fig.update_xaxis(gridcolor='#1e3a5f')
+    fig.update_yaxes(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
+    fig.update_xaxes(gridcolor='#1e3a5f')
     
     return fig
 
