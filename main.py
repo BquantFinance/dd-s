@@ -176,24 +176,27 @@ def load_stock_data(symbol, period="2y"):
 
 @st.cache_data(ttl=86400)
 def get_sp500_symbols():
-    """Obtener símbolos del S&P 500 desde CSV"""
+    """Obtener símbolos del S&P 500 desde CSV en GitHub"""
     try:
         # Leer CSV desde GitHub
         url = "https://raw.githubusercontent.com/BquantFinance/dd-s/main/sp500_companies.csv"
         df = pd.read_csv(url)
         
-        # Asumir que hay una columna 'Symbol' o similar
-        # Ajustar según la estructura real del CSV
+        # Buscar la columna de símbolos
         if 'Symbol' in df.columns:
             symbols = df['Symbol'].tolist()
         elif 'symbol' in df.columns:
             symbols = df['symbol'].tolist()
+        elif 'Ticker' in df.columns:
+            symbols = df['Ticker'].tolist()
+        elif 'ticker' in df.columns:
+            symbols = df['ticker'].tolist()
         else:
-            # Usar la primera columna si no encontramos 'Symbol'
+            # Usar la primera columna si no encontramos ninguna de las anteriores
             symbols = df.iloc[:, 0].tolist()
         
         # Reemplazar puntos por guiones para compatibilidad con yfinance
-        symbols = [str(s).replace('.', '-') for s in symbols]
+        symbols = [str(s).replace('.', '-').strip() for s in symbols if pd.notna(s)]
         return symbols
     except Exception as e:
         st.error(f"Error al cargar símbolos del S&P 500: {e}")
@@ -470,8 +473,8 @@ def create_comparison_chart(prices_dict, episodes_dict):
         )
     )
     
-    fig.update_yaxis(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
-    fig.update_xaxis(gridcolor='#1e3a5f')
+    fig.update_yaxes(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
+    fig.update_xaxes(gridcolor='#1e3a5f')
     
     return fig
 
