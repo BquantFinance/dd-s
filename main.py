@@ -499,7 +499,7 @@ def main():
         
         analysis_mode = st.radio(
             "Modo de Análisis",
-            ["🎯 Acción Individual", "📊 Comparación de Índices", "🏆 Análisis S&P 500"],
+            ["🎯 Acción Individual", "📊 Comparación", "🏆 Análisis S&P 500"],
             help="Elige tu tipo de análisis"
         )
         
