@@ -21,74 +21,202 @@ st.set_page_config(
 # ==================== ESTILOS ====================
 st.markdown("""
 <style>
-    .main { background-color: #0d1117; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    .main { 
+        background-color: #0a0a0a;
+        color: #e0e0e0;
+    }
+    
+    /* Métricas minimalistas */
     .stMetric { 
-        background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%);
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(10px);
     }
+    
     .stMetric label {
-        color: #ffffff !important;
-        font-weight: 600 !important;
+        color: #999999 !important;
+        font-weight: 500 !important;
+        font-size: 0.875rem !important;
+        letter-spacing: 0.5px !important;
+        text-transform: uppercase;
     }
+    
     .stMetric [data-testid="stMetricValue"] {
         color: #ffffff !important;
-        font-size: 2rem !important;
+        font-size: 2.5rem !important;
+        font-weight: 600 !important;
     }
+    
+    /* Tipografía limpia */
     h1 { 
-        color: #00ff88 !important;
-        font-weight: 800 !important;
-        text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 2.5rem !important;
+        letter-spacing: -0.5px;
+        margin-bottom: 0.5rem !important;
     }
+    
     h2 { 
-        color: #00d4ff !important;
-        font-weight: 700 !important;
+        color: #e0e0e0 !important;
+        font-weight: 600 !important;
+        font-size: 1.75rem !important;
+        letter-spacing: -0.3px;
+        margin-top: 2rem !important;
     }
+    
     h3 { 
-        color: #ffd700 !important;
-        font-weight: 700 !important;
+        color: #cccccc !important;
+        font-weight: 500 !important;
+        font-size: 1.25rem !important;
+        letter-spacing: -0.2px;
     }
-    .element-container {
-        color: #e6e6e6 !important;
+    
+    p, .element-container {
+        color: #b0b0b0 !important;
+        line-height: 1.6;
     }
-    /* Mejorar contraste de info boxes */
+    
+    /* Cajas de información minimalistas */
     .stAlert {
-        background-color: rgba(0, 212, 255, 0.2) !important;
-        border: 2px solid #00d4ff !important;
-        color: #ffffff !important;
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border-left: 3px solid #ffffff !important;
+        border-radius: 8px !important;
+        color: #e0e0e0 !important;
+        padding: 20px !important;
     }
-    /* Warning boxes */
+    
     [data-baseweb="notification"] {
-        background-color: rgba(255, 215, 0, 0.2) !important;
-        border: 2px solid #ffd700 !important;
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border-left: 3px solid #888888 !important;
     }
-    /* Success boxes */
+    
     .stSuccess {
-        background-color: rgba(0, 255, 136, 0.2) !important;
-        border: 2px solid #00ff88 !important;
-        color: #ffffff !important;
+        border-left: 3px solid #4ade80 !important;
     }
-    /* Error boxes */
+    
     .stError {
-        background-color: rgba(255, 68, 68, 0.2) !important;
-        border: 2px solid #ff4444 !important;
-        color: #ffffff !important;
+        border-left: 3px solid #f87171 !important;
     }
-    /* Tablas */
+    
+    .stWarning {
+        border-left: 3px solid #fbbf24 !important;
+    }
+    
+    /* Inputs minimalistas */
+    .stTextInput input, .stSelectbox select, .stNumberInput input {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+    }
+    
+    .stTextInput input:focus, .stSelectbox select:focus, .stNumberInput input:focus {
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+    }
+    
+    /* Botones minimalistas */
+    .stButton button {
+        background: rgba(255, 255, 255, 0.05) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stButton button:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+        border-color: rgba(255, 255, 255, 0.25) !important;
+    }
+    
+    .stButton button[kind="primary"] {
+        background: #ffffff !important;
+        color: #0a0a0a !important;
+        border: none !important;
+    }
+    
+    .stButton button[kind="primary"]:hover {
+        background: #e0e0e0 !important;
+    }
+    
+    /* Tabs minimalistas */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent !important;
+        color: #888888 !important;
+        border: none !important;
+        padding: 12px 20px !important;
+        font-weight: 500 !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #ffffff !important;
+        border-bottom: 2px solid #ffffff !important;
+    }
+    
+    /* Tablas limpias */
     .dataframe {
-        color: #ffffff !important;
+        color: #e0e0e0 !important;
+        background-color: rgba(255, 255, 255, 0.02) !important;
     }
-    /* Inputs */
-    .stTextInput input, .stSelectbox, .stMultiSelect {
-        background-color: #1a1f2e !important;
-        color: #ffffff !important;
-        border: 1px solid #00d4ff !important;
+    
+    .dataframe th {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: #b0b0b0 !important;
+        font-weight: 500 !important;
+        text-transform: uppercase;
+        font-size: 0.75rem !important;
+        letter-spacing: 0.5px;
     }
-    /* Sliders */
+    
+    /* Slider minimalista */
     .stSlider {
-        color: #00d4ff !important;
+        padding: 10px 0;
+    }
+    
+    /* Expander limpio */
+    .streamlit-expanderHeader {
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        color: #e0e0e0 !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Sidebar minimalista */
+    [data-testid="stSidebar"] {
+        background-color: #000000;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Remover decoraciones innecesarias */
+    .stDeployButton {
+        display: none;
+    }
+    
+    footer {
+        display: none;
+    }
+    
+    /* Espaciado limpio */
+    .block-container {
+        padding: 3rem 2rem;
+        max-width: 1200px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -308,22 +436,23 @@ def create_underwater_chart(prices, episodes):
     
     fig.update_layout(
         title={
-            'text': "🏊 Gráfico de Respiración Submarina<br><sub>¿Cuánto tiempo puedes aguantar la respiración?</sub>",
+            'text': "Gráfico de Drawdown<br><sub>Profundidad y duración de las caídas</sub>",
             'x': 0.5,
             'xanchor': 'center'
         },
         xaxis_title="",
-        yaxis_title="Profundidad (%)",
+        yaxis_title="Drawdown (%)",
         height=400,
-        plot_bgcolor='#0a0e27',
-        paper_bgcolor='#0a0e27',
-        font=dict(color='white'),
+        plot_bgcolor='#0a0a0a',
+        paper_bgcolor='#0a0a0a',
+        font=dict(color='#e0e0e0', family='Inter, sans-serif'),
         hovermode='x unified',
-        showlegend=False
+        showlegend=False,
+        title_font=dict(size=18, color='#ffffff')
     )
     
-    fig.update_yaxes(gridcolor='#1e3d5c', zeroline=True, zerolinecolor='#4facfe')
-    fig.update_xaxes(gridcolor='#1e3d5c')
+    fig.update_yaxes(gridcolor='#1a1a1a', zeroline=True, zerolinecolor='#333333', zerolinewidth=1)
+    fig.update_xaxes(gridcolor='#1a1a1a')
     
     return fig
 
@@ -368,9 +497,9 @@ def create_recovery_velocity_gauge(episodes):
     
     fig.update_layout(
         height=300,
-        plot_bgcolor='#0a0e27',
-        paper_bgcolor='#0a0e27',
-        font=dict(color='white')
+        plot_bgcolor='#0a0a0a',
+        paper_bgcolor='#0a0a0a',
+        font=dict(color='#e0e0e0', family='Inter, sans-serif')
     )
     
     return fig
@@ -519,11 +648,11 @@ def create_comparison_chart(prices_dict, episodes_dict):
 def main():
     # Encabezado
     st.markdown("""
-    <h1 style='text-align: center; font-size: 3em; margin-bottom: 0;'>
-    🌊 Laboratorio de Inteligencia de Drawdowns
+    <h1 style='text-align: center; margin-bottom: 0.5rem;'>
+    Laboratorio de Drawdowns
     </h1>
-    <p style='text-align: center; color: #8b92a8; font-size: 1.2em; margin-top: 0;'>
-    Entendiendo el dolor del mercado a través de historias, no solo estadísticas
+    <p style='text-align: center; color: #999999; font-size: 1rem; margin-top: 0;'>
+    Análisis de riesgo y recuperación del mercado
     </p>
     """, unsafe_allow_html=True)
     
@@ -531,32 +660,26 @@ def main():
     
     # Barra lateral
     with st.sidebar:
-        st.markdown("### 🎛️ Panel de Control")
+        st.markdown("### Panel de Control")
         
         analysis_mode = st.radio(
             "Modo de Análisis",
-            ["🎯 Acción Individual", "📊 Comparación de Índices", "🏆 Análisis S&P 500"],
+            ["Acción Individual", "Análisis S&P 500"],
             help="Elige tu tipo de análisis"
         )
         
         period = st.selectbox(
-            "Configuración de Máquina del Tiempo",
+            "Período",
             ["6mo", "1y", "2y", "5y", "max"],
             index=2,
             help="Qué tan atrás analizar"
         )
         
-        if analysis_mode == "🎯 Acción Individual":
+        if analysis_mode == "Acción Individual":
             symbol = st.text_input("Símbolo de Acción", "AAPL").upper()
             symbols = [symbol]
-        elif analysis_mode == "📊 Comparación de Índices":
-            symbols = st.multiselect(
-                "Selecciona Acciones para Comparar",
-                options=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'JNJ'],
-                default=['AAPL', 'MSFT', 'GOOGL']
-            )
         else:
-            if st.button("🔄 Cargar S&P 500", type="primary"):
+            if st.button("Cargar S&P 500", type="primary"):
                 with st.spinner("Cargando datos del S&P 500 desde CSV..."):
                     df = load_sp500_data()
                     if not df.empty:
@@ -565,19 +688,19 @@ def main():
             
             symbols = st.session_state.get('sp500_symbols', [])
         
-        analyze_btn = st.button("🚀 Analizar", type="primary", use_container_width=True)
+        analyze_btn = st.button("Analizar", type="primary", use_container_width=True)
         
         st.markdown("---")
         
         # Contenido educativo
-        with st.expander("📚 ¿Qué es un Drawdown?"):
+        with st.expander("¿Qué es un Drawdown?"):
             st.markdown("""
             Un **drawdown** es la caída pico-valle durante un período específico.
             
             Piénsalo como:
-            - 📉 Cuánto estás "bajo el agua" desde tu punto más alto
-            - 😰 El dolor que sientes al ver caer tu portafolio
-            - ⏳ La prueba de paciencia mientras esperas la recuperación
+            - Cuánto estás "bajo el agua" desde tu punto más alto
+            - El dolor que sientes al ver caer tu portafolio
+            - La prueba de paciencia mientras esperas la recuperación
             
             **Por qué importa:**
             - Revela el riesgo real (la volatilidad no cuenta toda la historia)
@@ -587,10 +710,8 @@ def main():
     
     # Contenido principal
     if analyze_btn and symbols:
-        if analysis_mode == "🎯 Acción Individual":
+        if analysis_mode == "Acción Individual":
             display_individual_analysis(symbols[0], period)
-        elif analysis_mode == "📊 Comparación de Índices":
-            display_comparison_analysis(symbols, period)
         else:
             display_sp500_analysis(symbols, period)
     else:
@@ -599,26 +720,22 @@ def main():
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.markdown("## Bienvenido al Laboratorio de Inteligencia de Drawdowns")
-            st.markdown("##### Donde convertimos el dolor del mercado en insights accionables")
+            st.markdown("## Laboratorio de Drawdowns")
+            st.markdown("Análisis de riesgo y recuperación del mercado")
         
         st.markdown("<br><br>", unsafe_allow_html=True)
         
-        st.markdown("### Elige Tu Aventura:")
+        st.markdown("### Selecciona un Modo de Análisis")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.info("**🎯 Acción Individual**")
-            st.write("Inmersión profunda en los puntos de dolor de una acción")
+            st.info("**Acción Individual**")
+            st.write("Análisis profundo de drawdowns y recuperación de una acción específica")
         
         with col2:
-            st.info("**📊 Comparación de Índices**")
-            st.write("Compara cómo diferentes acciones manejan los drawdowns")
-        
-        with col3:
-            st.info("**🏆 Análisis S&P 500**")
-            st.write("Evaluación de dolor a nivel de mercado")
+            st.info("**Análisis S&P 500**")
+            st.write("Evaluación del estado de dolor del mercado completo")
 
 def display_individual_analysis(symbol, period):
     """Mostrar análisis para acción individual"""
@@ -747,9 +864,9 @@ def display_individual_analysis(symbol, period):
                     
                     fig.update_layout(
                         height=300,
-                        plot_bgcolor='#0a0e27',
-                        paper_bgcolor='#0a0e27',
-                        font=dict(color='white'),
+                        plot_bgcolor='#0a0a0a',
+                        paper_bgcolor='#0a0a0a',
+                        font=dict(color='#e0e0e0', family='Inter, sans-serif'),
                         showlegend=False
                     )
                     
@@ -779,9 +896,9 @@ def display_individual_analysis(symbol, period):
             fig.update_layout(
                 title="Distribución de Régimen de Mercado",
                 height=300,
-                plot_bgcolor='#0a0e27',
-                paper_bgcolor='#0a0e27',
-                font=dict(color='white')
+                plot_bgcolor='#0a0a0a',
+                paper_bgcolor='#0a0a0a',
+                font=dict(color='#e0e0e0', family='Inter, sans-serif')
             )
             
             st.plotly_chart(fig, width='stretch')
@@ -802,9 +919,9 @@ def display_individual_analysis(symbol, period):
                     xaxis_title="Drawdown (%)",
                     yaxis_title="Frecuencia",
                     height=300,
-                    plot_bgcolor='#0a0e27',
-                    paper_bgcolor='#0a0e27',
-                    font=dict(color='white')
+                    plot_bgcolor='#0a0a0a',
+                    paper_bgcolor='#0a0a0a',
+                    font=dict(color='#e0e0e0', family='Inter, sans-serif')
                 )
                 
                 st.plotly_chart(fig, width='stretch')
@@ -897,139 +1014,6 @@ def display_individual_analysis(symbol, period):
                     st.metric("La recuperación tomó", f"{episode['recovery_days']} días")
                 else:
                     st.metric("Aún esperando", "No recuperado")
-
-def display_comparison_analysis(symbols, period):
-    """Mostrar análisis de comparación para múltiples acciones"""
-    
-    st.markdown("### 🏁 Carrera de Drawdowns: ¿Quién Maneja Mejor el Dolor?")
-    
-    prices_dict = {}
-    episodes_dict = {}
-    
-    # Cargar datos
-    progress = st.progress(0)
-    for i, symbol in enumerate(symbols):
-        prices = load_stock_data(symbol, period)
-        if prices is not None and len(prices) > 50:
-            prices_dict[symbol] = prices
-            episodes_dict[symbol] = get_drawdown_episodes(prices)
-        progress.progress((i + 1) / len(symbols))
-    progress.empty()
-    
-    if not prices_dict:
-        st.error("No se pudo cargar datos para los símbolos seleccionados")
-        return
-    
-    # Métricas de comparación
-    comparison_data = []
-    for symbol, episodes in episodes_dict.items():
-        if episodes:
-            comparison_data.append({
-                'Símbolo': symbol,
-                'DD Actual (%)': calculate_drawdowns(prices_dict[symbol]).iloc[-1] * 100,
-                'Peor DD (%)': min(e['max_drawdown'] for e in episodes) * 100,
-                'DD Promedio (%)': np.mean([e['max_drawdown'] for e in episodes]) * 100,
-                'Índice de Dolor': calculate_pain_index(calculate_drawdowns(prices_dict[symbol])),
-                'Tasa de Recuperación (%)': sum(1 for e in episodes if e['recovered']) / len(episodes) * 100,
-                'Recuperación Promedio (días)': np.mean([e['recovery_days'] for e in episodes if e['recovered']]) if any(e['recovered'] for e in episodes) else 0
-            })
-    
-    comparison_df = pd.DataFrame(comparison_data)
-    
-    # Mostrar rankings
-    st.markdown("### 🏆 Rankings de Desempeño")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("**🛡️ Más Resiliente** (Menor peor DD)")
-        winner = comparison_df.nlargest(1, 'Peor DD (%)').iloc[0]
-        st.success(f"👑 {winner['Símbolo']}: {winner['Peor DD (%)']:.1f}%")
-    
-    with col2:
-        st.markdown("**💊 Menos Doloroso** (Menor índice de dolor)")
-        winner = comparison_df.nsmallest(1, 'Índice de Dolor').iloc[0]
-        st.success(f"👑 {winner['Símbolo']}: {winner['Índice de Dolor']:.1f}")
-    
-    with col3:
-        st.markdown("**⚡ Recuperación Más Rápida** (Días promedio)")
-        winner = comparison_df.nsmallest(1, 'Recuperación Promedio (días)').iloc[0]
-        st.success(f"👑 {winner['Símbolo']}: {winner['Recuperación Promedio (días)']:.0f} días")
-    
-    # Gráfico de comparación
-    st.plotly_chart(create_comparison_chart(prices_dict, episodes_dict), width='stretch')
-    
-    # Tabla de comparación detallada
-    st.markdown("### 📊 Comparación Detallada")
-    
-    st.dataframe(
-        comparison_df.style.format({
-            'DD Actual (%)': '{:.1f}',
-            'Peor DD (%)': '{:.1f}',
-            'DD Promedio (%)': '{:.1f}',
-            'Índice de Dolor': '{:.1f}',
-            'Tasa de Recuperación (%)': '{:.0f}',
-            'Recuperación Promedio (días)': '{:.0f}'
-        }).background_gradient(cmap='RdYlGn_r', subset=['DD Actual (%)', 'Peor DD (%)', 'Índice de Dolor'])
-          .background_gradient(cmap='RdYlGn', subset=['Tasa de Recuperación (%)']),
-        width='stretch'
-    )
-    
-    # Batallas cara a cara
-    st.markdown("### ⚔️ Batallas Cara a Cara")
-    
-    if len(symbols) >= 2:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fighter1 = st.selectbox("Luchador 1", symbols, index=0)
-        with col2:
-            fighter2 = st.selectbox("Luchador 2", symbols, index=1)
-        
-        if fighter1 != fighter2:
-            f1_data = comparison_df[comparison_df['Símbolo'] == fighter1].iloc[0]
-            f2_data = comparison_df[comparison_df['Símbolo'] == fighter2].iloc[0]
-            
-            battles = [
-                ('Posición Actual', 'DD Actual (%)', True),  # True significa menor es mejor
-                ('Dureza Histórica', 'Peor DD (%)', False),  # False significa mayor es mejor
-                ('Tolerancia al Dolor', 'Índice de Dolor', True),
-                ('Poder de Recuperación', 'Tasa de Recuperación (%)', False),
-                ('Velocidad', 'Recuperación Promedio (días)', True)
-            ]
-            
-            f1_wins = 0
-            f2_wins = 0
-            
-            for battle_name, metric, lower_better in battles:
-                if lower_better:
-                    winner = fighter1 if f1_data[metric] < f2_data[metric] else fighter2
-                    if winner == fighter1:
-                        f1_wins += 1
-                    else:
-                        f2_wins += 1
-                else:
-                    winner = fighter1 if f1_data[metric] > f2_data[metric] else fighter2
-                    if winner == fighter1:
-                        f1_wins += 1
-                    else:
-                        f2_wins += 1
-                
-                col1, col2, col3 = st.columns([2, 1, 2])
-                with col1:
-                    if winner == fighter1:
-                        st.success(f"{fighter1}: {f1_data[metric]:.1f}")
-                    else:
-                        st.error(f"{fighter1}: {f1_data[metric]:.1f}")
-                with col2:
-                    st.markdown(f"**{battle_name}**")
-                with col3:
-                    if winner == fighter2:
-                        st.success(f"{fighter2}: {f2_data[metric]:.1f}")
-                    else:
-                        st.error(f"{fighter2}: {f2_data[metric]:.1f}")
-            
-            st.markdown(f"### 🏆 Ganador: {fighter1 if f1_wins > f2_wins else fighter2} ({max(f1_wins, f2_wins)}-{min(f1_wins, f2_wins)})")
 
 def display_sp500_analysis(symbols, period):
     """Mostrar análisis agregado del S&P 500"""
@@ -1140,37 +1124,36 @@ def display_sp500_analysis(symbols, period):
     )])
     
     fig.update_layout(
-        title="Bottom 10 - Actualmente Sufriendo Más",
+        title="Peores Drawdowns Actuales",
         height=400,
-        plot_bgcolor='#0a0e27',
-        paper_bgcolor='#0a0e27',
-        font=dict(color='white')
+        plot_bgcolor='#0a0a0a',
+        paper_bgcolor='#0a0a0a',
+        font=dict(color='#e0e0e0', family='Inter, sans-serif')
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
     # Perspectiva histórica
     if all_episodes:
-        st.markdown("### 📜 Perspectiva Histórica")
+        st.markdown("### Perspectiva Histórica")
         
         # Agrupar por año
         episodes_df = pd.DataFrame(all_episodes)
         episodes_df['year'] = pd.to_datetime(episodes_df['start_date']).dt.year
         
-        yearly_stats = episodes_df.groupby('year').agg({
-            'max_drawdown': ['count', 'mean'],
-            'recovery_days': 'mean'
-        }).round(1)
+        # Calcular estadísticas por año
+        yearly_counts = episodes_df.groupby('year').size()
+        yearly_avg_dd = episodes_df.groupby('year')['max_drawdown'].mean().abs() * 100
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**📅 Drawdowns por Año**")
-            st.bar_chart(yearly_stats[('max_drawdown', 'count')])
+            st.markdown("**Drawdowns por Año**")
+            st.bar_chart(yearly_counts)
         
         with col2:
-            st.markdown("**😰 Dolor Promedio por Año**")
-            st.line_chart(abs(yearly_stats[('max_drawdown', 'mean')] * 100))
+            st.markdown("**Dolor Promedio por Año**")
+            st.line_chart(yearly_avg_dd)
 
 if __name__ == "__main__":
     main()
