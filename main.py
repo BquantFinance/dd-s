@@ -260,14 +260,29 @@ def create_underwater_chart(prices, episodes):
             color = 'rgba(255, 255, 0, 0.3)'
             label = '🟡 Precaución'
         
-        fig.add_vrect(
-            x0=episode['start_date'].strftime('%Y-%m-%d'),
-            x1=episode['end_date'].strftime('%Y-%m-%d'),
+        # Usar add_shape en lugar de add_vrect para evitar problemas
+        fig.add_shape(
+            type="rect",
+            xref="x",
+            yref="paper",
+            x0=episode['start_date'],
+            y0=0,
+            x1=episode['end_date'],
+            y1=1,
             fillcolor=color,
             layer='below',
-            line_width=0,
-            annotation_text=f"{depth:.1f}%",
-            annotation_position="top"
+            line_width=0
+        )
+        
+        # Agregar anotación de texto por separado
+        fig.add_annotation(
+            x=episode['start_date'] + (episode['end_date'] - episode['start_date']) / 2,
+            y=1,
+            yref="paper",
+            text=f"{depth:.1f}%",
+            showarrow=False,
+            font=dict(size=10, color="white"),
+            yanchor="top"
         )
     
     # Línea de superficie
@@ -1067,23 +1082,18 @@ def display_sp500_analysis(symbols, period):
     # Evaluación del estado de ánimo del mercado
     if avg_dd > -5:
         mood = "😊 Eufórico - ¡Los mercados se sienten genial!"
-        mood_color = "green"
     elif avg_dd > -10:
         mood = "😐 Cauteloso - Algo de nerviosismo apareciendo"
-        mood_color = "yellow"
     elif avg_dd > -20:
         mood = "😰 Temeroso - Estrés significativo en el sistema"
-        mood_color = "orange"
     else:
         mood = "😱 Pánico - Miedo máximo, ¿oportunidad potencial?"
-        mood_color = "red"
     
-    st.markdown(f"""
-    <div class='insight-box'>
-        <h2>Estado de Ánimo del Mercado: {mood}</h2>
-        <p>Basado en {len(current_dds)} acciones analizadas</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.info(f"""
+    ## Estado de Ánimo del Mercado: {mood}
+    
+    Basado en {len(current_dds)} acciones analizadas
+    """)
     
     # Peores performers
     st.markdown("### 💀 Heridos Andantes (Peores Drawdowns Actuales)")
