@@ -21,7 +21,7 @@ st.set_page_config(
 # ==================== ESTILOS ====================
 st.markdown("""
 <style>
-    .main { background-color: #0e1117; }
+    .main { background-color: #0a0e27; }
     .stMetric { 
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 20px;
@@ -29,30 +29,33 @@ st.markdown("""
         box-shadow: 0 10px 20px rgba(0,0,0,0.2);
     }
     .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         padding: 25px;
-        border-radius: 15px;
+        border-radius: 20px;
         text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        box-shadow: 0 15px 35px rgba(79, 172, 254, 0.3);
         margin: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .insight-box {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        padding: 20px;
-        border-radius: 15px;
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        padding: 25px;
+        border-radius: 20px;
         margin: 20px 0;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        box-shadow: 0 15px 35px rgba(250, 112, 154, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .warning-box {
-        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        padding: 20px;
-        border-radius: 15px;
+        background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
+        padding: 25px;
+        border-radius: 20px;
         margin: 20px 0;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        box-shadow: 0 15px 35px rgba(255, 107, 107, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     h1, h2, h3 { 
         font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
@@ -258,8 +261,8 @@ def create_underwater_chart(prices, episodes):
             label = '🟡 Precaución'
         
         fig.add_vrect(
-            x0=episode['start_date'],
-            x1=episode['end_date'],
+            x0=episode['start_date'].strftime('%Y-%m-%d'),
+            x1=episode['end_date'].strftime('%Y-%m-%d'),
             fillcolor=color,
             layer='below',
             line_width=0,
@@ -279,15 +282,15 @@ def create_underwater_chart(prices, episodes):
         xaxis_title="",
         yaxis_title="Profundidad (%)",
         height=400,
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
+        plot_bgcolor='#0a0e27',
+        paper_bgcolor='#0a0e27',
         font=dict(color='white'),
         hovermode='x unified',
         showlegend=False
     )
     
-    fig.update_yaxes(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
-    fig.update_xaxes(gridcolor='#1e3a5f')
+    fig.update_yaxes(gridcolor='#1e3d5c', zeroline=True, zerolinecolor='#4facfe')
+    fig.update_xaxes(gridcolor='#1e3d5c')
     
     return fig
 
@@ -332,8 +335,8 @@ def create_recovery_velocity_gauge(episodes):
     
     fig.update_layout(
         height=300,
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
+        plot_bgcolor='#0a0e27',
+        paper_bgcolor='#0a0e27',
         font=dict(color='white')
     )
     
@@ -460,8 +463,8 @@ def create_comparison_chart(prices_dict, episodes_dict):
         xaxis_title="",
         yaxis_title="Drawdown (%)",
         height=500,
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
+        plot_bgcolor='#0a0e27',
+        paper_bgcolor='#0a0e27',
         font=dict(color='white'),
         hovermode='x unified',
         legend=dict(
@@ -469,12 +472,12 @@ def create_comparison_chart(prices_dict, episodes_dict):
             y=0.99,
             xanchor="left",
             x=0.01,
-            bgcolor='rgba(0,0,0,0.5)'
+            bgcolor='rgba(10, 14, 39, 0.8)'
         )
     )
     
-    fig.update_yaxes(gridcolor='#1e3a5f', zeroline=True, zerolinecolor='#4a90e2')
-    fig.update_xaxes(gridcolor='#1e3a5f')
+    fig.update_yaxes(gridcolor='#1e3d5c', zeroline=True, zerolinecolor='#4facfe')
+    fig.update_xaxes(gridcolor='#1e3d5c')
     
     return fig
 
@@ -499,7 +502,7 @@ def main():
         
         analysis_mode = st.radio(
             "Modo de Análisis",
-            ["🎯 Acción Individual", "📊 Comparación", "🏆 Análisis S&P 500"],
+            ["🎯 Acción Individual", "📊 Comparación de Índices", "🏆 Análisis S&P 500"],
             help="Elige tu tipo de análisis"
         )
         
@@ -706,8 +709,8 @@ def display_individual_analysis(symbol, period):
                     
                     fig.update_layout(
                         height=300,
-                        plot_bgcolor='#0e1117',
-                        paper_bgcolor='#0e1117',
+                        plot_bgcolor='#0a0e27',
+                        paper_bgcolor='#0a0e27',
                         font=dict(color='white'),
                         showlegend=False
                     )
@@ -738,8 +741,8 @@ def display_individual_analysis(symbol, period):
             fig.update_layout(
                 title="Distribución de Régimen de Mercado",
                 height=300,
-                plot_bgcolor='#0e1117',
-                paper_bgcolor='#0e1117',
+                plot_bgcolor='#0a0e27',
+                paper_bgcolor='#0a0e27',
                 font=dict(color='white')
             )
             
@@ -761,8 +764,8 @@ def display_individual_analysis(symbol, period):
                     xaxis_title="Drawdown (%)",
                     yaxis_title="Frecuencia",
                     height=300,
-                    plot_bgcolor='#0e1117',
-                    paper_bgcolor='#0e1117',
+                    plot_bgcolor='#0a0e27',
+                    paper_bgcolor='#0a0e27',
                     font=dict(color='white')
                 )
                 
