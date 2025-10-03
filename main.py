@@ -21,43 +21,74 @@ st.set_page_config(
 # ==================== ESTILOS ====================
 st.markdown("""
 <style>
-    .main { background-color: #0a0e27; }
+    .main { background-color: #0d1117; }
     .stMetric { 
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%);
         padding: 20px;
         border-radius: 15px;
         box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        color: #ffffff !important;
     }
-    .metric-card {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        padding: 25px;
-        border-radius: 20px;
-        text-align: center;
-        box-shadow: 0 15px 35px rgba(79, 172, 254, 0.3);
-        margin: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    .stMetric label {
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
-    .insight-box {
-        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        padding: 25px;
-        border-radius: 20px;
-        margin: 20px 0;
-        box-shadow: 0 15px 35px rgba(250, 112, 154, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    .stMetric [data-testid="stMetricValue"] {
+        color: #ffffff !important;
+        font-size: 2rem !important;
     }
-    .warning-box {
-        background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
-        padding: 25px;
-        border-radius: 20px;
-        margin: 20px 0;
-        box-shadow: 0 15px 35px rgba(255, 107, 107, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    h1 { 
+        color: #00ff88 !important;
+        font-weight: 800 !important;
+        text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
     }
-    h1, h2, h3 { 
-        font-weight: 700;
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    h2 { 
+        color: #00d4ff !important;
+        font-weight: 700 !important;
+    }
+    h3 { 
+        color: #ffd700 !important;
+        font-weight: 700 !important;
+    }
+    .element-container {
+        color: #e6e6e6 !important;
+    }
+    /* Mejorar contraste de info boxes */
+    .stAlert {
+        background-color: rgba(0, 212, 255, 0.2) !important;
+        border: 2px solid #00d4ff !important;
+        color: #ffffff !important;
+    }
+    /* Warning boxes */
+    [data-baseweb="notification"] {
+        background-color: rgba(255, 215, 0, 0.2) !important;
+        border: 2px solid #ffd700 !important;
+    }
+    /* Success boxes */
+    .stSuccess {
+        background-color: rgba(0, 255, 136, 0.2) !important;
+        border: 2px solid #00ff88 !important;
+        color: #ffffff !important;
+    }
+    /* Error boxes */
+    .stError {
+        background-color: rgba(255, 68, 68, 0.2) !important;
+        border: 2px solid #ff4444 !important;
+        color: #ffffff !important;
+    }
+    /* Tablas */
+    .dataframe {
+        color: #ffffff !important;
+    }
+    /* Inputs */
+    .stTextInput input, .stSelectbox, .stMultiSelect {
+        background-color: #1a1f2e !important;
+        color: #ffffff !important;
+        border: 1px solid #00d4ff !important;
+    }
+    /* Sliders */
+    .stSlider {
+        color: #00d4ff !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -178,55 +209,42 @@ def load_stock_data(symbol, period="2y"):
         return None
 
 @st.cache_data(ttl=86400)
-def get_sp500_symbols():
-    """Obtener símbolos del S&P 500 desde CSV en GitHub"""
+def load_sp500_data():
+    """Cargar datos del S&P 500 desde CSV local"""
     try:
-        # Leer CSV desde GitHub
-        url = "https://raw.githubusercontent.com/BquantFinance/dd-s/main/sp500_companies.csv"
-        df = pd.read_csv(url)
+        # Leer CSV local - las columnas son los tickers, primera columna es fecha
+        df = pd.read_csv('sp500_companies.csv', index_col=0, parse_dates=True)
         
-        # Buscar la columna de símbolos
-        if 'Symbol' in df.columns:
-            symbols = df['Symbol'].tolist()
-        elif 'symbol' in df.columns:
-            symbols = df['symbol'].tolist()
-        elif 'Ticker' in df.columns:
-            symbols = df['Ticker'].tolist()
-        elif 'ticker' in df.columns:
-            symbols = df['ticker'].tolist()
-        else:
-            # Usar la primera columna si no encontramos ninguna de las anteriores
-            symbols = df.iloc[:, 0].tolist()
+        st.success(f"Datos del S&P 500 cargados: {len(df.columns)} acciones, {len(df)} días")
         
-        # Reemplazar puntos por guiones para compatibilidad con yfinance
-        symbols = [str(s).replace('.', '-').strip() for s in symbols if pd.notna(s)]
-        return symbols
+        return df
+        
+    except FileNotFoundError:
+        st.error("No se encontró el archivo sp500_companies.csv")
+        st.info("Asegúrate de que el archivo esté en el mismo directorio que main.py")
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error al cargar símbolos del S&P 500: {e}")
-        return []
+        st.error(f"Error al cargar datos: {str(e)}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
-def load_index_components(symbols, period="2y"):
-    """Cargar datos para múltiples símbolos"""
-    prices_dict = {}
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, symbol in enumerate(symbols[:100]):  # Limitar a 100 por velocidad
-        try:
-            prices = load_stock_data(symbol, period)
-            if prices is not None and len(prices) > 50:
-                prices_dict[symbol] = prices
-        except:
-            continue
+def load_index_components_from_csv():
+    """Cargar datos del S&P 500 directamente desde CSV - mucho más rápido"""
+    try:
+        # Leer CSV - columnas son tickers, índice es fecha
+        df = pd.read_csv('sp500_companies.csv', index_col=0, parse_dates=True)
         
-        progress_bar.progress((i + 1) / min(len(symbols), 100))
-        status_text.text(f"Cargando {symbol}...")
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    return pd.DataFrame(prices_dict)
+        st.success(f"✅ Cargados {len(df.columns)} acciones del S&P 500 con {len(df)} días de datos")
+        
+        return df
+        
+    except FileNotFoundError:
+        st.error("❌ No se encontró sp500_companies.csv")
+        st.info("💡 Asegúrate de que el archivo esté en el mismo directorio")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return pd.DataFrame()
 
 # ==================== FUNCIONES DE VISUALIZACIÓN ====================
 
@@ -539,9 +557,13 @@ def main():
             )
         else:
             if st.button("🔄 Cargar S&P 500", type="primary"):
-                with st.spinner("Cargando todo el S&P 500..."):
-                    st.session_state['sp500_symbols'] = get_sp500_symbols()
-            symbols = st.session_state.get('sp500_symbols', [])[:50]  # Limitar para demo
+                with st.spinner("Cargando datos del S&P 500 desde CSV..."):
+                    df = load_sp500_data()
+                    if not df.empty:
+                        st.session_state['sp500_data'] = df
+                        st.session_state['sp500_symbols'] = df.columns.tolist()
+            
+            symbols = st.session_state.get('sp500_symbols', [])
         
         analyze_btn = st.button("🚀 Analizar", type="primary", use_container_width=True)
         
@@ -672,12 +694,12 @@ def display_individual_analysis(symbol, period):
     ])
     
     with tab1:
-        st.plotly_chart(create_underwater_chart(prices, episodes), use_container_width=True)
+        st.plotly_chart(create_underwater_chart(prices, episodes), width='stretch')
         
         if episodes and episodes[0]['recovered']:
             col1, col2 = st.columns(2)
             with col1:
-                st.plotly_chart(create_recovery_velocity_gauge(episodes), use_container_width=True)
+                st.plotly_chart(create_recovery_velocity_gauge(episodes), width='stretch')
             with col2:
                 # Estadísticas de recuperación
                 recoveries = [e for e in episodes if e['recovered']]
@@ -731,7 +753,7 @@ def display_individual_analysis(symbol, period):
                         showlegend=False
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
         else:
             st.info("¡No se encontraron drawdowns significativos en este período!")
     
@@ -762,7 +784,7 @@ def display_individual_analysis(symbol, period):
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         
         with col2:
             # Distribución de drawdown
@@ -785,7 +807,7 @@ def display_individual_analysis(symbol, period):
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         # Tabla de estadísticas
         if episodes:
@@ -935,7 +957,7 @@ def display_comparison_analysis(symbols, period):
         st.success(f"👑 {winner['Símbolo']}: {winner['Recuperación Promedio (días)']:.0f} días")
     
     # Gráfico de comparación
-    st.plotly_chart(create_comparison_chart(prices_dict, episodes_dict), use_container_width=True)
+    st.plotly_chart(create_comparison_chart(prices_dict, episodes_dict), width='stretch')
     
     # Tabla de comparación detallada
     st.markdown("### 📊 Comparación Detallada")
@@ -950,7 +972,7 @@ def display_comparison_analysis(symbols, period):
             'Recuperación Promedio (días)': '{:.0f}'
         }).background_gradient(cmap='RdYlGn_r', subset=['DD Actual (%)', 'Peor DD (%)', 'Índice de Dolor'])
           .background_gradient(cmap='RdYlGn', subset=['Tasa de Recuperación (%)']),
-        use_container_width=True
+        width='stretch'
     )
     
     # Batallas cara a cara
@@ -1014,11 +1036,15 @@ def display_sp500_analysis(symbols, period):
     
     st.markdown("### 🌍 Evaluación de Dolor a Nivel de Mercado")
     
-    # Cargar datos para símbolos
-    prices_df = load_index_components(symbols, period)
-    
+    # Cargar datos desde CSV o session state
+    if 'sp500_data' in st.session_state:
+        prices_df = st.session_state['sp500_data']
+    else:
+        prices_df = load_index_components_from_csv()
+        
     if prices_df.empty:
         st.error("No se pudo cargar datos del S&P 500")
+        st.info("💡 Asegúrate de tener el archivo sp500_companies.csv en el directorio")
         return
     
     # Calcular métricas agregadas
