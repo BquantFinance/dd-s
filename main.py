@@ -10,15 +10,15 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-# ==================== CONFIGURATION ====================
+# ==================== CONFIGURACIÓN ====================
 st.set_page_config(
-    page_title="Drawdown Intelligence Lab",
+    page_title="Laboratorio de Inteligencia de Drawdowns",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ==================== STYLING ====================
+# ==================== ESTILOS ====================
 st.markdown("""
 <style>
     .main { background-color: #0e1117; }
@@ -59,20 +59,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== CORE FUNCTIONS ====================
+# ==================== FUNCIONES PRINCIPALES ====================
 
 def calculate_drawdowns(prices):
-    """Calculate drawdown series from prices"""
+    """Calcular serie de drawdowns desde precios"""
     cummax = prices.expanding().max()
     drawdown = (prices - cummax) / cummax
     return drawdown
 
 def get_drawdown_episodes(prices, threshold=-0.02):
-    """Identify and analyze distinct drawdown episodes"""
+    """Identificar y analizar episodios distintos de drawdown"""
     dd_series = calculate_drawdowns(prices)
     in_drawdown = dd_series < threshold
     
-    # Group consecutive drawdown days
+    # Agrupar días consecutivos de drawdown
     dd_groups = (in_drawdown != in_drawdown.shift()).cumsum()
     
     episodes = []
@@ -80,14 +80,14 @@ def get_drawdown_episodes(prices, threshold=-0.02):
         mask = (dd_groups == group_id) & in_drawdown
         episode = dd_series[mask]
         
-        if len(episode) < 2:  # Skip very short drawdowns
+        if len(episode) < 2:  # Saltar drawdowns muy cortos
             continue
             
-        # Get key dates
+        # Obtener fechas clave
         start_idx = episode.index[0]
         start_price = prices.loc[start_idx]
         
-        # Find the peak before drawdown
+        # Encontrar el pico antes del drawdown
         pre_dd = prices[:start_idx]
         if len(pre_dd) > 0:
             peak_idx = pre_dd.index[-1]
@@ -95,13 +95,13 @@ def get_drawdown_episodes(prices, threshold=-0.02):
         else:
             continue
             
-        # Find the bottom
+        # Encontrar el fondo
         bottom_idx = episode.idxmin()
         bottom_price = prices.loc[bottom_idx]
         
-        # Find recovery (if any)
+        # Encontrar recuperación (si existe)
         post_dd = prices[prices.index > bottom_idx]
-        recovery_mask = post_dd >= peak_price * 0.98  # Within 2% of peak
+        recovery_mask = post_dd >= peak_price * 0.98  # Dentro del 2% del pico
         
         if recovery_mask.any():
             recovery_idx = post_dd[recovery_mask].index[0]
@@ -112,11 +112,11 @@ def get_drawdown_episodes(prices, threshold=-0.02):
             recovered = False
             recovery_days = (prices.index[-1] - bottom_idx).days
         
-        # Calculate metrics
+        # Calcular métricas
         max_dd = episode.min()
         duration = (episode.index[-1] - episode.index[0]).days
         
-        # Calculate velocity (how fast it fell)
+        # Calcular velocidad (qué tan rápido cayó)
         fall_days = (bottom_idx - start_idx).days
         velocity = abs(max_dd) / max(fall_days, 1)
         
@@ -140,31 +140,31 @@ def get_drawdown_episodes(prices, threshold=-0.02):
     return sorted(episodes, key=lambda x: x['max_drawdown'])
 
 def calculate_pain_index(drawdowns):
-    """Calculate pain index - average drawdown over period"""
+    """Calcular índice de dolor - drawdown promedio durante el período"""
     return abs(drawdowns[drawdowns < 0].mean()) * 100 if len(drawdowns[drawdowns < 0]) > 0 else 0
 
 def calculate_ulcer_index(drawdowns):
-    """Calculate Ulcer Index - measures both depth and duration of drawdowns"""
+    """Calcular Índice Úlcera - mide profundidad y duración de drawdowns"""
     squared_dd = drawdowns ** 2
     return np.sqrt(squared_dd.mean()) * 100
 
 def get_market_regime(prices, window=50):
-    """Identify market regime (trending up/down/sideways)"""
+    """Identificar régimen de mercado (tendencia alcista/bajista/lateral)"""
     sma_short = prices.rolling(window=20).mean()
     sma_long = prices.rolling(window=window).mean()
     
     regime = pd.Series(index=prices.index, dtype='object')
-    regime[sma_short > sma_long] = 'Bull'
-    regime[sma_short < sma_long] = 'Bear'
-    regime[abs(sma_short - sma_long) / sma_long < 0.02] = 'Sideways'
+    regime[sma_short > sma_long] = 'Alcista'
+    regime[sma_short < sma_long] = 'Bajista'
+    regime[abs(sma_short - sma_long) / sma_long < 0.02] = 'Lateral'
     
     return regime
 
-# ==================== DATA LOADING ====================
+# ==================== CARGA DE DATOS ====================
 
 @st.cache_data(ttl=3600)
 def load_stock_data(symbol, period="2y"):
-    """Load stock data from yfinance"""
+    """Cargar datos de acciones desde yfinance"""
     try:
         ticker = yf.Ticker(symbol)
         data = ticker.history(period=period)
@@ -176,23 +176,37 @@ def load_stock_data(symbol, period="2y"):
 
 @st.cache_data(ttl=86400)
 def get_sp500_symbols():
-    """Get S&P 500 symbols"""
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers)
-    tables = pd.read_html(response.text)
-    sp500_table = tables[0]
-    symbols = sp500_table['Symbol'].str.replace('.', '-').tolist()
-    return symbols
+    """Obtener símbolos del S&P 500 desde CSV"""
+    try:
+        # Leer CSV desde GitHub
+        url = "https://raw.githubusercontent.com/BquantFinance/dd-s/main/sp500_companies.csv"
+        df = pd.read_csv(url)
+        
+        # Asumir que hay una columna 'Symbol' o similar
+        # Ajustar según la estructura real del CSV
+        if 'Symbol' in df.columns:
+            symbols = df['Symbol'].tolist()
+        elif 'symbol' in df.columns:
+            symbols = df['symbol'].tolist()
+        else:
+            # Usar la primera columna si no encontramos 'Symbol'
+            symbols = df.iloc[:, 0].tolist()
+        
+        # Reemplazar puntos por guiones para compatibilidad con yfinance
+        symbols = [str(s).replace('.', '-') for s in symbols]
+        return symbols
+    except Exception as e:
+        st.error(f"Error al cargar símbolos del S&P 500: {e}")
+        return []
 
 @st.cache_data(ttl=3600)
 def load_index_components(symbols, period="2y"):
-    """Load data for multiple symbols"""
+    """Cargar datos para múltiples símbolos"""
     prices_dict = {}
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i, symbol in enumerate(symbols[:100]):  # Limit to 100 for speed
+    for i, symbol in enumerate(symbols[:100]):  # Limitar a 100 por velocidad
         try:
             prices = load_stock_data(symbol, period)
             if prices is not None and len(prices) > 50:
@@ -201,44 +215,44 @@ def load_index_components(symbols, period="2y"):
             continue
         
         progress_bar.progress((i + 1) / min(len(symbols), 100))
-        status_text.text(f"Loading {symbol}...")
+        status_text.text(f"Cargando {symbol}...")
     
     progress_bar.empty()
     status_text.empty()
     
     return pd.DataFrame(prices_dict)
 
-# ==================== VISUALIZATION FUNCTIONS ====================
+# ==================== FUNCIONES DE VISUALIZACIÓN ====================
 
 def create_underwater_chart(prices, episodes):
-    """Create underwater breathing visualization"""
+    """Crear visualización de respiración submarina"""
     dd_series = calculate_drawdowns(prices)
     
     fig = go.Figure()
     
-    # Main underwater area
+    # Área submarina principal
     fig.add_trace(go.Scatter(
         x=dd_series.index,
         y=dd_series.values * 100,
         fill='tozeroy',
         fillcolor='rgba(53, 92, 125, 0.6)',
         line=dict(color='rgb(53, 92, 125)', width=2),
-        name='Underwater',
-        hovertemplate='Date: %{x}<br>Depth: %{y:.1f}%<extra></extra>'
+        name='Bajo el agua',
+        hovertemplate='Fecha: %{x}<br>Profundidad: %{y:.1f}%<extra></extra>'
     ))
     
-    # Add "oxygen levels" - deeper = more critical
-    for episode in episodes[:5]:  # Top 5 worst
+    # Agregar "niveles de oxígeno" - más profundo = más crítico
+    for episode in episodes[:5]:  # Top 5 peores
         depth = abs(episode['max_drawdown'] * 100)
         if depth > 20:
             color = 'rgba(255, 0, 0, 0.3)'
-            label = '🔴 Critical'
+            label = '🔴 Crítico'
         elif depth > 10:
             color = 'rgba(255, 165, 0, 0.3)'
-            label = '🟠 Warning'
+            label = '🟠 Advertencia'
         else:
             color = 'rgba(255, 255, 0, 0.3)'
-            label = '🟡 Caution'
+            label = '🟡 Precaución'
         
         fig.add_vrect(
             x0=episode['start_date'],
@@ -250,17 +264,17 @@ def create_underwater_chart(prices, episodes):
             annotation_position="top"
         )
     
-    # Surface line
+    # Línea de superficie
     fig.add_hline(y=0, line_dash="dash", line_color="white", line_width=2, opacity=0.5)
     
     fig.update_layout(
         title={
-            'text': "🏊 Underwater Breathing Chart<br><sub>How long can you hold your breath?</sub>",
+            'text': "🏊 Gráfico de Respiración Submarina<br><sub>¿Cuánto tiempo puedes aguantar la respiración?</sub>",
             'x': 0.5,
             'xanchor': 'center'
         },
         xaxis_title="",
-        yaxis_title="Depth (%)",
+        yaxis_title="Profundidad (%)",
         height=400,
         plot_bgcolor='#0e1117',
         paper_bgcolor='#0e1117',
@@ -275,16 +289,16 @@ def create_underwater_chart(prices, episodes):
     return fig
 
 def create_recovery_velocity_gauge(episodes):
-    """Create speedometer-style recovery velocity visualization"""
+    """Crear visualización de velocidad de recuperación estilo velocímetro"""
     if not episodes:
         return None
     
-    recent_episode = episodes[0]  # Most recent/severe
+    recent_episode = episodes[0]  # Más reciente/severo
     
     if recent_episode['recovered']:
-        # Calculate recovery velocity (% recovered per day)
+        # Calcular velocidad de recuperación (% recuperado por día)
         recovery_velocity = abs(recent_episode['max_drawdown']) / recent_episode['recovery_days'] * 100
-        max_velocity = 2.0  # 2% per day is very fast
+        max_velocity = 2.0  # 2% por día es muy rápido
         velocity_pct = min(recovery_velocity / max_velocity * 100, 100)
     else:
         velocity_pct = 0
@@ -293,7 +307,7 @@ def create_recovery_velocity_gauge(episodes):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=velocity_pct,
-        title={'text': "Recovery Velocity<br><sub>Speed of comeback</sub>"},
+        title={'text': "Velocidad de Recuperación<br><sub>Velocidad de regreso</sub>"},
         domain={'x': [0, 1], 'y': [0, 1]},
         number={'suffix': "%", 'valueformat': ".1f"},
         gauge={
@@ -322,132 +336,94 @@ def create_recovery_velocity_gauge(episodes):
     
     return fig
 
-def create_pain_calendar(prices):
-    """Create calendar heatmap of daily pain"""
-    dd_series = calculate_drawdowns(prices) * 100
-    
-    # Prepare data for calendar
-    df = pd.DataFrame({
-        'date': dd_series.index,
-        'drawdown': dd_series.values,
-        'year': dd_series.index.year,
-        'month': dd_series.index.month,
-        'day': dd_series.index.day,
-        'weekday': dd_series.index.weekday,
-        'week': dd_series.index.isocalendar().week
-    })
-    
-    # Create color scale
-    colors = ['green', 'yellow', 'orange', 'red', 'darkred']
-    boundaries = [0, -5, -10, -20, -30, -100]
-    
-    fig = px.density_heatmap(
-        df, 
-        x='week', 
-        y='weekday',
-        z='drawdown',
-        color_continuous_scale=colors,
-        labels={'weekday': 'Day', 'week': 'Week', 'drawdown': 'DD%'},
-        title="📅 Pain Calendar - When It Hurts Most",
-        height=400
-    )
-    
-    fig.update_layout(
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
-        font=dict(color='white')
-    )
-    
-    return fig
-
 def create_drawdown_story(episode, symbol):
-    """Generate narrative for a drawdown episode"""
+    """Generar narrativa para un episodio de drawdown"""
     depth = abs(episode['max_drawdown'] * 100)
     duration = episode['duration_days']
     
-    # Generate relatable comparisons
+    # Generar comparaciones relacionables
     if depth > 50:
-        comparison = "💀 Like losing half your life savings"
-        severity = "catastrophic"
+        comparison = "💀 Como perder la mitad de tus ahorros de vida"
+        severity = "catastrófico"
         emoji = "🚨"
     elif depth > 30:
-        comparison = "😱 Like your house losing a year's worth of appreciation"
-        severity = "severe"
+        comparison = "😱 Como si tu casa perdiera un año de valorización"
+        severity = "severo"
         emoji = "⚠️"
     elif depth > 20:
-        comparison = "😰 Like totaling your car"
-        severity = "significant"
+        comparison = "😰 Como chocar tu auto"
+        severity = "significativo"
         emoji = "⚠️"
     elif depth > 10:
-        comparison = "😟 Like an unexpected medical bill"
-        severity = "moderate"
+        comparison = "😟 Como una factura médica inesperada"
+        severity = "moderado"
         emoji = "📉"
     else:
-        comparison = "😐 Like a bad shopping spree"
-        severity = "mild"
+        comparison = "😐 Como un mal día de compras"
+        severity = "leve"
         emoji = "📊"
     
-    # Recovery status
+    # Estado de recuperación
     if episode['recovered']:
-        recovery_text = f"✅ **Recovered** in {episode['recovery_days']} days"
+        recovery_text = f"✅ **Recuperado** en {episode['recovery_days']} días"
         if episode['recovery_days'] < 30:
-            recovery_speed = "Lightning fast recovery! ⚡"
+            recovery_speed = "¡Recuperación ultrarrápida! ⚡"
         elif episode['recovery_days'] < 90:
-            recovery_speed = "Quick recovery 🏃"
+            recovery_speed = "Recuperación rápida 🏃"
         elif episode['recovery_days'] < 180:
-            recovery_speed = "Steady recovery 🚶"
+            recovery_speed = "Recuperación constante 🚶"
         else:
-            recovery_speed = "Long road to recovery 🐢"
+            recovery_speed = "Largo camino a la recuperación 🐢"
     else:
         days_underwater = (datetime.now().date() - episode['bottom_date'].date()).days
-        recovery_text = f"❌ **Still underwater** for {days_underwater} days"
-        recovery_speed = "Still waiting for recovery... ⏳"
+        recovery_text = f"❌ **Aún bajo el agua** por {days_underwater} días"
+        recovery_speed = "Aún esperando recuperación... ⏳"
     
     story = f"""
-    ### {emoji} The {episode['start_date'].strftime('%B %Y')} {severity.title()} Drawdown
+    ### {emoji} El Drawdown {severity.title()} de {episode['start_date'].strftime('%B %Y')}
     
-    **The Damage:** -{depth:.1f}% in {episode['fall_days']} days  
-    **Relatable Pain:** {comparison}  
-    **Total Duration:** {duration} days underwater  
+    **El Daño:** -{depth:.1f}% en {episode['fall_days']} días  
+    **Dolor Comparable:** {comparison}  
+    **Duración Total:** {duration} días bajo el agua  
     {recovery_text}  
-    **Recovery Speed:** {recovery_speed}  
+    **Velocidad de Recuperación:** {recovery_speed}  
     
-    **What $10,000 became:** ${10000 * (1 + episode['max_drawdown']):.0f}  
-    **Velocity:** Falling at {episode['velocity']*100:.1f}% per day
+    **$10,000 se convirtieron en:** ${10000 * (1 + episode['max_drawdown']):.0f}  
+    **Velocidad:** Cayendo a {episode['velocity']*100:.1f}% por día
     """
     
     return story
 
 def create_decision_helper(current_dd, episodes):
-    """Create a 'Should I Worry?' decision helper"""
+    """Crear un ayudante de decisión '¿Debería preocuparme?'"""
     
-    # Historical context
+    # Contexto histórico
     if episodes:
         worse_episodes = sum(1 for e in episodes if e['max_drawdown'] < current_dd)
         percentile = (worse_episodes / len(episodes)) * 100
     else:
         percentile = 0
     
-    # Decision logic
+    # Lógica de decisión
     if current_dd > -2:
-        status = "🟢 **All Clear**"
-        action = "Normal market noise. Stay the course."
+        status = "🟢 **Todo Despejado**"
+        action = "Ruido normal del mercado. Mantén el rumbo."
         color = "green"
     elif current_dd > -5:
-        status = "🟡 **Minor Turbulence**"
-        action = "No action needed. This is normal."
+        status = "🟡 **Turbulencia Menor**"
+        action = "No se requiere acción. Esto es normal."
         color = "yellow"
     elif current_dd > -10:
-        status = "🟠 **Caution Zone**"
-        action = "Review your risk tolerance. Consider your timeline."
+        status = "🟠 **Zona de Precaución**"
+        action = "Revisa tu tolerancia al riesgo. Considera tu horizonte temporal."
         color = "orange"
     elif current_dd > -20:
-        status = "🔴 **Significant Drawdown**"
-        action = "Don't panic sell. Review your investment thesis."
+        status = "🔴 **Drawdown Significativo**"
+        action = "No vendas en pánico. Revisa tu tesis de inversión."
         color = "red"
     else:
-        status = "💀 **Major Drawdown**"
-        action = "Crisis mode. Stick to your plan, history shows recovery."
+        status = "💀 **Drawdown Mayor**"
+        action = "Modo crisis. Apégate a tu plan, la historia muestra recuperación."
         color = "darkred"
     
     return {
@@ -459,7 +435,7 @@ def create_decision_helper(current_dd, episodes):
     }
 
 def create_comparison_chart(prices_dict, episodes_dict):
-    """Compare multiple stocks' drawdown behavior"""
+    """Comparar comportamiento de drawdown de múltiples acciones"""
     fig = go.Figure()
     
     colors = px.colors.qualitative.Set1
@@ -473,11 +449,11 @@ def create_comparison_chart(prices_dict, episodes_dict):
             name=symbol,
             line=dict(color=colors[i % len(colors)], width=2),
             opacity=0.7,
-            hovertemplate=f'{symbol}<br>Date: %{{x}}<br>DD: %{{y:.1f}}%<extra></extra>'
+            hovertemplate=f'{symbol}<br>Fecha: %{{x}}<br>DD: %{{y:.1f}}%<extra></extra>'
         ))
     
     fig.update_layout(
-        title="Drawdown Comparison - Who Handles Pain Better?",
+        title="Comparación de Drawdowns - ¿Quién Maneja Mejor el Dolor?",
         xaxis_title="",
         yaxis_title="Drawdown (%)",
         height=500,
@@ -499,113 +475,113 @@ def create_comparison_chart(prices_dict, episodes_dict):
     
     return fig
 
-# ==================== MAIN APP ====================
+# ==================== APLICACIÓN PRINCIPAL ====================
 
 def main():
-    # Header
+    # Encabezado
     st.markdown("""
     <h1 style='text-align: center; font-size: 3em; margin-bottom: 0;'>
-    🌊 Drawdown Intelligence Lab
+    🌊 Laboratorio de Inteligencia de Drawdowns
     </h1>
     <p style='text-align: center; color: #8b92a8; font-size: 1.2em; margin-top: 0;'>
-    Understanding market pain through stories, not just statistics
+    Entendiendo el dolor del mercado a través de historias, no solo estadísticas
     </p>
     """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Sidebar
+    # Barra lateral
     with st.sidebar:
-        st.markdown("### 🎛️ Control Panel")
+        st.markdown("### 🎛️ Panel de Control")
         
         analysis_mode = st.radio(
-            "Analysis Mode",
-            ["🎯 Individual Stock", "📊 Index Comparison", "🏆 S&P 500 Analysis"],
-            help="Choose your analysis type"
+            "Modo de Análisis",
+            ["🎯 Acción Individual", "📊 Comparación de Índices", "🏆 Análisis S&P 500"],
+            help="Elige tu tipo de análisis"
         )
         
         period = st.selectbox(
-            "Time Machine Setting",
+            "Configuración de Máquina del Tiempo",
             ["6mo", "1y", "2y", "5y", "max"],
             index=2,
-            help="How far back to analyze"
+            help="Qué tan atrás analizar"
         )
         
-        if analysis_mode == "🎯 Individual Stock":
-            symbol = st.text_input("Stock Symbol", "AAPL").upper()
+        if analysis_mode == "🎯 Acción Individual":
+            symbol = st.text_input("Símbolo de Acción", "AAPL").upper()
             symbols = [symbol]
-        elif analysis_mode == "📊 Index Comparison":
+        elif analysis_mode == "📊 Comparación de Índices":
             symbols = st.multiselect(
-                "Select Stocks to Compare",
+                "Selecciona Acciones para Comparar",
                 options=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'JNJ'],
                 default=['AAPL', 'MSFT', 'GOOGL']
             )
         else:
-            if st.button("🔄 Load S&P 500", type="primary"):
-                with st.spinner("Loading the entire S&P 500..."):
+            if st.button("🔄 Cargar S&P 500", type="primary"):
+                with st.spinner("Cargando todo el S&P 500..."):
                     st.session_state['sp500_symbols'] = get_sp500_symbols()
-            symbols = st.session_state.get('sp500_symbols', [])[:50]  # Limit for demo
+            symbols = st.session_state.get('sp500_symbols', [])[:50]  # Limitar para demo
         
-        analyze_btn = st.button("🚀 Analyze", type="primary", use_container_width=True)
+        analyze_btn = st.button("🚀 Analizar", type="primary", use_container_width=True)
         
         st.markdown("---")
         
-        # Educational content
-        with st.expander("📚 What is a Drawdown?"):
+        # Contenido educativo
+        with st.expander("📚 ¿Qué es un Drawdown?"):
             st.markdown("""
-            A **drawdown** is the peak-to-trough decline during a specific period.
+            Un **drawdown** es la caída pico-valle durante un período específico.
             
-            Think of it as:
-            - 📉 How much you're "underwater" from your highest point
-            - 😰 The pain you feel watching your portfolio drop
-            - ⏳ The patience test while waiting for recovery
+            Piénsalo como:
+            - 📉 Cuánto estás "bajo el agua" desde tu punto más alto
+            - 😰 El dolor que sientes al ver caer tu portafolio
+            - ⏳ La prueba de paciencia mientras esperas la recuperación
             
-            **Why it matters:**
-            - Reveals true risk (volatility doesn't tell the whole story)
-            - Tests your emotional resilience
-            - Helps size positions appropriately
+            **Por qué importa:**
+            - Revela el riesgo real (la volatilidad no cuenta toda la historia)
+            - Prueba tu resistencia emocional
+            - Ayuda a dimensionar posiciones apropiadamente
             """)
     
-    # Main content
+    # Contenido principal
     if analyze_btn and symbols:
-        if analysis_mode == "🎯 Individual Stock":
+        if analysis_mode == "🎯 Acción Individual":
             display_individual_analysis(symbols[0], period)
-        elif analysis_mode == "📊 Index Comparison":
+        elif analysis_mode == "📊 Comparación de Índices":
             display_comparison_analysis(symbols, period)
         else:
             display_sp500_analysis(symbols, period)
     else:
-        # Welcome screen
+        # Pantalla de bienvenida
         st.markdown("""
         <div style='text-align: center; padding: 50px;'>
-            <h2>Welcome to the Drawdown Intelligence Lab</h2>
+            <h2>Bienvenido al Laboratorio de Inteligencia de Drawdowns</h2>
             <p style='font-size: 1.2em; color: #8b92a8;'>
-            Where we turn market pain into actionable insights
+            Donde convertimos el dolor del mercado en insights accionables
             </p>
             
             <div style='margin-top: 50px;'>
-                <h3>Choose Your Adventure:</h3>
-                <p>🎯 <b>Individual Stock</b> - Deep dive into one stock's pain points</p>
-                <p>📊 <b>Index Comparison</b> - Compare how different stocks handle drawdowns</p>
-                <p>🏆 <b>S&P 500 Analysis</b> - Market-wide pain assessment</p>
+                <h3>Elige Tu Aventura:</h3>
+                <p>🎯 <b>Acción Individual</b> - Inmersión profunda en los puntos de dolor de una acción</p>
+                <p>📊 <b>Comparación de Índices</b> - Compara cómo diferentes acciones manejan los drawdowns</p>
+                <p>🏆 <b>Análisis S&P 500</b> - Evaluación de dolor a nivel de mercado</p>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
 def display_individual_analysis(symbol, period):
-    """Display analysis for individual stock"""
+    """Mostrar análisis para acción individual"""
     
     prices = load_stock_data(symbol, period)
     
     if prices is None or len(prices) < 50:
-        st.error(f"Unable to load sufficient data for {symbol}")
+        st.error(f"No se pudo cargar suficientes datos para {symbol}")
         return
     
     episodes = get_drawdown_episodes(prices)
     current_dd = calculate_drawdowns(prices).iloc[-1] * 100
     
-    # Hero metrics
-    st.markdown("### 🎯 Current Situation")
+    # Métricas principales
+    st.markdown("### 🎯 Situación Actual")
     
     decision = create_decision_helper(current_dd, episodes)
     
@@ -616,7 +592,7 @@ def display_individual_analysis(symbol, period):
         <div class='metric-card'>
             <h3>{decision['status']}</h3>
             <p style='font-size: 2em; margin: 0;'>{current_dd:.1f}%</p>
-            <p style='margin: 0;'>Current Drawdown</p>
+            <p style='margin: 0;'>Drawdown Actual</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -624,9 +600,9 @@ def display_individual_analysis(symbol, period):
         worst_dd = min(e['max_drawdown'] for e in episodes) * 100 if episodes else 0
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>😱 Worst Ever</h3>
+            <h3>😱 El Peor</h3>
             <p style='font-size: 2em; margin: 0;'>{worst_dd:.1f}%</p>
-            <p style='margin: 0;'>Maximum Pain</p>
+            <p style='margin: 0;'>Dolor Máximo</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -634,9 +610,9 @@ def display_individual_analysis(symbol, period):
         pain_index = calculate_pain_index(calculate_drawdowns(prices))
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>💊 Pain Index</h3>
+            <h3>💊 Índice de Dolor</h3>
             <p style='font-size: 2em; margin: 0;'>{pain_index:.1f}</p>
-            <p style='margin: 0;'>Average Pain</p>
+            <p style='margin: 0;'>Dolor Promedio</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -647,25 +623,25 @@ def display_individual_analysis(symbol, period):
             recovery_rate = 0
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>💪 Recovery Rate</h3>
+            <h3>💪 Tasa de Recuperación</h3>
             <p style='font-size: 2em; margin: 0;'>{recovery_rate:.0f}%</p>
-            <p style='margin: 0;'>Comeback Ratio</p>
+            <p style='margin: 0;'>Ratio de Regreso</p>
         </div>
         """, unsafe_allow_html=True)
     
-    # Decision helper box
+    # Caja de ayuda para decisiones
     st.markdown(f"""
     <div class='insight-box'>
-        <h3>🤔 What Should You Do?</h3>
+        <h3>🤔 ¿Qué Deberías Hacer?</h3>
         <p><b>{decision['action']}</b></p>
-        <p>This drawdown is worse than {decision['percentile']:.0f}% of historical drawdowns.</p>
-        <p>Remember: Every drawdown feels like the worst one when you're in it.</p>
+        <p>Este drawdown es peor que el {decision['percentile']:.0f}% de los drawdowns históricos.</p>
+        <p>Recuerda: Cada drawdown se siente como el peor cuando estás en él.</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Main visualizations
+    # Visualizaciones principales
     tab1, tab2, tab3, tab4 = st.tabs([
-        "🏊 Underwater View", "📖 Drawdown Stories", "📊 Analytics", "🎯 Decision Tools"
+        "🏊 Vista Submarina", "📖 Historias de Drawdown", "📊 Analítica", "🎯 Herramientas de Decisión"
     ])
     
     with tab1:
@@ -676,32 +652,32 @@ def display_individual_analysis(symbol, period):
             with col1:
                 st.plotly_chart(create_recovery_velocity_gauge(episodes), use_container_width=True)
             with col2:
-                # Recovery stats
+                # Estadísticas de recuperación
                 recoveries = [e for e in episodes if e['recovered']]
                 if recoveries:
                     avg_recovery = np.mean([e['recovery_days'] for e in recoveries])
                     st.markdown(f"""
                     <div class='metric-card'>
-                        <h3>⏱️ Recovery Stats</h3>
-                        <p>Average: {avg_recovery:.0f} days</p>
-                        <p>Fastest: {min(e['recovery_days'] for e in recoveries)} days</p>
-                        <p>Slowest: {max(e['recovery_days'] for e in recoveries)} days</p>
+                        <h3>⏱️ Estadísticas de Recuperación</h3>
+                        <p>Promedio: {avg_recovery:.0f} días</p>
+                        <p>Más rápida: {min(e['recovery_days'] for e in recoveries)} días</p>
+                        <p>Más lenta: {max(e['recovery_days'] for e in recoveries)} días</p>
                     </div>
                     """, unsafe_allow_html=True)
     
     with tab2:
-        st.markdown("### 📚 Your Drawdown History")
+        st.markdown("### 📚 Tu Historial de Drawdowns")
         
         if episodes:
-            # Show stories for top 3 worst drawdowns
+            # Mostrar historias para los 3 peores drawdowns
             for i, episode in enumerate(episodes[:3], 1):
-                with st.expander(f"Story #{i}: {episode['start_date'].strftime('%B %Y')} Drawdown"):
+                with st.expander(f"Historia #{i}: Drawdown de {episode['start_date'].strftime('%B %Y')}"):
                     st.markdown(create_drawdown_story(episode, symbol))
                     
-                    # Mini chart for this episode
+                    # Mini gráfico para este episodio
                     fig = go.Figure()
                     
-                    # Get price series for this episode period
+                    # Obtener serie de precios para este período de episodio
                     episode_start = episode['peak_date']
                     episode_end = episode['recovery_date'] if episode['recovery_date'] else prices.index[-1]
                     episode_prices = prices[episode_start:episode_end]
@@ -711,16 +687,16 @@ def display_individual_analysis(symbol, period):
                         y=episode_prices.values,
                         mode='lines',
                         line=dict(color='lightblue', width=2),
-                        name='Price'
+                        name='Precio'
                     ))
                     
-                    # Mark key points
+                    # Marcar puntos clave
                     fig.add_trace(go.Scatter(
                         x=[episode['peak_date'], episode['bottom_date']],
                         y=[episode['peak_price'], episode['bottom_price']],
                         mode='markers+text',
                         marker=dict(size=10, color=['green', 'red']),
-                        text=['Peak', 'Bottom'],
+                        text=['Pico', 'Fondo'],
                         textposition='top center',
                         showlegend=False
                     ))
@@ -735,20 +711,20 @@ def display_individual_analysis(symbol, period):
                     
                     st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No significant drawdowns found in this period!")
+            st.info("¡No se encontraron drawdowns significativos en este período!")
     
     with tab3:
-        # Detailed analytics
-        st.markdown("### 📈 Deep Analytics")
+        # Analítica detallada
+        st.markdown("### 📈 Analítica Profunda")
         
-        # Regime analysis
+        # Análisis de régimen
         regime = get_market_regime(prices)
         regime_counts = regime.value_counts()
         
         col1, col2 = st.columns(2)
         
         with col1:
-            # Regime pie chart
+            # Gráfico circular de régimen
             fig = go.Figure(data=[go.Pie(
                 labels=regime_counts.index,
                 values=regime_counts.values,
@@ -757,7 +733,7 @@ def display_individual_analysis(symbol, period):
             )])
             
             fig.update_layout(
-                title="Market Regime Distribution",
+                title="Distribución de Régimen de Mercado",
                 height=300,
                 plot_bgcolor='#0e1117',
                 paper_bgcolor='#0e1117',
@@ -767,7 +743,7 @@ def display_individual_analysis(symbol, period):
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            # Drawdown distribution
+            # Distribución de drawdown
             if episodes:
                 dd_magnitudes = [abs(e['max_drawdown']) * 100 for e in episodes]
                 
@@ -778,9 +754,9 @@ def display_individual_analysis(symbol, period):
                 )])
                 
                 fig.update_layout(
-                    title="Drawdown Magnitude Distribution",
+                    title="Distribución de Magnitud de Drawdown",
                     xaxis_title="Drawdown (%)",
-                    yaxis_title="Frequency",
+                    yaxis_title="Frecuencia",
                     height=300,
                     plot_bgcolor='#0e1117',
                     paper_bgcolor='#0e1117',
@@ -789,44 +765,49 @@ def display_individual_analysis(symbol, period):
                 
                 st.plotly_chart(fig, use_container_width=True)
         
-        # Statistics table
+        # Tabla de estadísticas
         if episodes:
+            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+            worst_month = calculate_drawdowns(prices).groupby(pd.Grouper(freq='M')).min().idxmin()
+            worst_month_str = f"{meses[worst_month.month-1]} {worst_month.year}"
+            
             stats_df = pd.DataFrame({
-                'Metric': [
-                    'Number of Drawdowns',
-                    'Average Drawdown (%)',
-                    'Average Duration (days)',
-                    'Average Recovery (days)',
-                    'Worst Month',
-                    'Best Month After Drawdown'
+                'Métrica': [
+                    'Número de Drawdowns',
+                    'Drawdown Promedio (%)',
+                    'Duración Promedio (días)',
+                    'Recuperación Promedio (días)',
+                    'Peor Mes',
+                    'Mejor Mes Después de Drawdown'
                 ],
-                'Value': [
+                'Valor': [
                     len(episodes),
                     f"{np.mean([abs(e['max_drawdown']) * 100 for e in episodes]):.1f}%",
                     f"{np.mean([e['duration_days'] for e in episodes]):.0f}",
                     f"{np.mean([e['recovery_days'] for e in episodes if e['recovered']]):.0f}",
-                    calculate_drawdowns(prices).groupby(pd.Grouper(freq='M')).min().idxmin().strftime('%B %Y'),
-                    "Coming soon"
+                    worst_month_str,
+                    "Próximamente"
                 ]
             })
             
             st.table(stats_df)
     
     with tab4:
-        st.markdown("### 🎯 Decision Support Tools")
+        st.markdown("### 🎯 Herramientas de Apoyo a Decisiones")
         
-        # Risk tolerance calculator
+        # Calculadora de tolerancia al riesgo
         st.markdown("""
         <div class='warning-box'>
-            <h3>🎰 Your Risk Reality Check</h3>
+            <h3>🎰 Tu Chequeo de Realidad de Riesgo</h3>
         </div>
         """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            investment = st.number_input("Your Investment ($)", value=10000, step=1000)
-            tolerance = st.slider("Max Loss You Can Stomach (%)", 0, 50, 20)
+            investment = st.number_input("Tu Inversión ($)", value=10000, step=1000)
+            tolerance = st.slider("Pérdida Máxima que Puedes Soportar (%)", 0, 50, 20)
         
         with col2:
             if episodes:
@@ -835,29 +816,32 @@ def display_individual_analysis(symbol, period):
                 
                 if worst > tolerance:
                     st.error(f"""
-                    ⚠️ **Reality Check!**  
-                    Historical worst: -{worst:.1f}%  
-                    Your tolerance: -{tolerance}%  
-                    You'd lose: ${potential_loss:.0f}  
+                    ⚠️ **¡Chequeo de Realidad!**  
+                    Peor histórico: -{worst:.1f}%  
+                    Tu tolerancia: -{tolerance}%  
+                    Perderías: ${potential_loss:.0f}  
                     
-                    **You might want to reconsider your position size!**
+                    **¡Quizás quieras reconsiderar el tamaño de tu posición!**
                     """)
                 else:
                     st.success(f"""
-                    ✅ **Within Tolerance**  
-                    Historical worst: -{worst:.1f}%  
-                    Your tolerance: -{tolerance}%  
-                    Max historical loss: ${potential_loss:.0f}
+                    ✅ **Dentro de Tolerancia**  
+                    Peor histórico: -{worst:.1f}%  
+                    Tu tolerancia: -{tolerance}%  
+                    Pérdida histórica máxima: ${potential_loss:.0f}
                     """)
         
-        # Historical comparison tool
-        st.markdown("### 🕰️ Time Machine: What If You Bought At...")
+        # Herramienta de comparación histórica
+        st.markdown("### 🕰️ Máquina del Tiempo: ¿Qué Pasaría Si Hubieras Comprado En...")
         
         if episodes and len(episodes) > 0:
+            meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+            
             selected_episode = st.selectbox(
-                "Select a historical peak",
+                "Selecciona un pico histórico",
                 options=range(len(episodes)),
-                format_func=lambda i: f"{episodes[i]['peak_date'].strftime('%B %Y')} (fell {abs(episodes[i]['max_drawdown']*100):.1f}%)"
+                format_func=lambda i: f"{meses[episodes[i]['peak_date'].month-1]} {episodes[i]['peak_date'].year} (cayó {abs(episodes[i]['max_drawdown']*100):.1f}%)"
             )
             
             episode = episodes[selected_episode]
@@ -865,24 +849,24 @@ def display_individual_analysis(symbol, period):
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.metric("You'd be down", f"{abs(episode['max_drawdown']*100):.1f}%")
+                st.metric("Estarías abajo", f"{abs(episode['max_drawdown']*100):.1f}%")
             with col2:
-                st.metric("For this many days", f"{episode['duration_days']}")
+                st.metric("Por tantos días", f"{episode['duration_days']}")
             with col3:
                 if episode['recovered']:
-                    st.metric("Recovery took", f"{episode['recovery_days']} days")
+                    st.metric("La recuperación tomó", f"{episode['recovery_days']} días")
                 else:
-                    st.metric("Still waiting", "Not recovered")
+                    st.metric("Aún esperando", "No recuperado")
 
 def display_comparison_analysis(symbols, period):
-    """Display comparison analysis for multiple stocks"""
+    """Mostrar análisis de comparación para múltiples acciones"""
     
-    st.markdown("### 🏁 Drawdown Race: Who Handles Pain Better?")
+    st.markdown("### 🏁 Carrera de Drawdowns: ¿Quién Maneja Mejor el Dolor?")
     
     prices_dict = {}
     episodes_dict = {}
     
-    # Load data
+    # Cargar datos
     progress = st.progress(0)
     for i, symbol in enumerate(symbols):
         prices = load_stock_data(symbol, period)
@@ -893,85 +877,85 @@ def display_comparison_analysis(symbols, period):
     progress.empty()
     
     if not prices_dict:
-        st.error("Unable to load data for selected symbols")
+        st.error("No se pudo cargar datos para los símbolos seleccionados")
         return
     
-    # Comparison metrics
+    # Métricas de comparación
     comparison_data = []
     for symbol, episodes in episodes_dict.items():
         if episodes:
             comparison_data.append({
-                'Symbol': symbol,
-                'Current DD (%)': calculate_drawdowns(prices_dict[symbol]).iloc[-1] * 100,
-                'Worst DD (%)': min(e['max_drawdown'] for e in episodes) * 100,
-                'Avg DD (%)': np.mean([e['max_drawdown'] for e in episodes]) * 100,
-                'Pain Index': calculate_pain_index(calculate_drawdowns(prices_dict[symbol])),
-                'Recovery Rate (%)': sum(1 for e in episodes if e['recovered']) / len(episodes) * 100,
-                'Avg Recovery (days)': np.mean([e['recovery_days'] for e in episodes if e['recovered']]) if any(e['recovered'] for e in episodes) else 0
+                'Símbolo': symbol,
+                'DD Actual (%)': calculate_drawdowns(prices_dict[symbol]).iloc[-1] * 100,
+                'Peor DD (%)': min(e['max_drawdown'] for e in episodes) * 100,
+                'DD Promedio (%)': np.mean([e['max_drawdown'] for e in episodes]) * 100,
+                'Índice de Dolor': calculate_pain_index(calculate_drawdowns(prices_dict[symbol])),
+                'Tasa de Recuperación (%)': sum(1 for e in episodes if e['recovered']) / len(episodes) * 100,
+                'Recuperación Promedio (días)': np.mean([e['recovery_days'] for e in episodes if e['recovered']]) if any(e['recovered'] for e in episodes) else 0
             })
     
     comparison_df = pd.DataFrame(comparison_data)
     
-    # Display rankings
-    st.markdown("### 🏆 Performance Rankings")
+    # Mostrar rankings
+    st.markdown("### 🏆 Rankings de Desempeño")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("**🛡️ Most Resilient** (Smallest worst DD)")
-        winner = comparison_df.nlargest(1, 'Worst DD (%)').iloc[0]
-        st.success(f"👑 {winner['Symbol']}: {winner['Worst DD (%)']:.1f}%")
+        st.markdown("**🛡️ Más Resiliente** (Menor peor DD)")
+        winner = comparison_df.nlargest(1, 'Peor DD (%)').iloc[0]
+        st.success(f"👑 {winner['Símbolo']}: {winner['Peor DD (%)']:.1f}%")
     
     with col2:
-        st.markdown("**💊 Least Painful** (Lowest pain index)")
-        winner = comparison_df.nsmallest(1, 'Pain Index').iloc[0]
-        st.success(f"👑 {winner['Symbol']}: {winner['Pain Index']:.1f}")
+        st.markdown("**💊 Menos Doloroso** (Menor índice de dolor)")
+        winner = comparison_df.nsmallest(1, 'Índice de Dolor').iloc[0]
+        st.success(f"👑 {winner['Símbolo']}: {winner['Índice de Dolor']:.1f}")
     
     with col3:
-        st.markdown("**⚡ Fastest Recovery** (Avg days)")
-        winner = comparison_df.nsmallest(1, 'Avg Recovery (days)').iloc[0]
-        st.success(f"👑 {winner['Symbol']}: {winner['Avg Recovery (days)']:.0f} days")
+        st.markdown("**⚡ Recuperación Más Rápida** (Días promedio)")
+        winner = comparison_df.nsmallest(1, 'Recuperación Promedio (días)').iloc[0]
+        st.success(f"👑 {winner['Símbolo']}: {winner['Recuperación Promedio (días)']:.0f} días")
     
-    # Comparison chart
+    # Gráfico de comparación
     st.plotly_chart(create_comparison_chart(prices_dict, episodes_dict), use_container_width=True)
     
-    # Detailed comparison table
-    st.markdown("### 📊 Detailed Comparison")
+    # Tabla de comparación detallada
+    st.markdown("### 📊 Comparación Detallada")
     
     st.dataframe(
         comparison_df.style.format({
-            'Current DD (%)': '{:.1f}',
-            'Worst DD (%)': '{:.1f}',
-            'Avg DD (%)': '{:.1f}',
-            'Pain Index': '{:.1f}',
-            'Recovery Rate (%)': '{:.0f}',
-            'Avg Recovery (days)': '{:.0f}'
-        }).background_gradient(cmap='RdYlGn_r', subset=['Current DD (%)', 'Worst DD (%)', 'Pain Index'])
-          .background_gradient(cmap='RdYlGn', subset=['Recovery Rate (%)']),
+            'DD Actual (%)': '{:.1f}',
+            'Peor DD (%)': '{:.1f}',
+            'DD Promedio (%)': '{:.1f}',
+            'Índice de Dolor': '{:.1f}',
+            'Tasa de Recuperación (%)': '{:.0f}',
+            'Recuperación Promedio (días)': '{:.0f}'
+        }).background_gradient(cmap='RdYlGn_r', subset=['DD Actual (%)', 'Peor DD (%)', 'Índice de Dolor'])
+          .background_gradient(cmap='RdYlGn', subset=['Tasa de Recuperación (%)']),
         use_container_width=True
     )
     
-    # Head-to-head battles
-    st.markdown("### ⚔️ Head-to-Head Battles")
+    # Batallas cara a cara
+    st.markdown("### ⚔️ Batallas Cara a Cara")
     
     if len(symbols) >= 2:
         col1, col2 = st.columns(2)
         
         with col1:
-            fighter1 = st.selectbox("Fighter 1", symbols, index=0)
+            fighter1 = st.selectbox("Luchador 1", symbols, index=0)
         with col2:
-            fighter2 = st.selectbox("Fighter 2", symbols, index=1)
+            fighter2 = st.selectbox("Luchador 2", symbols, index=1)
         
         if fighter1 != fighter2:
-            f1_data = comparison_df[comparison_df['Symbol'] == fighter1].iloc[0]
-            f2_data = comparison_df[comparison_df['Symbol'] == fighter2].iloc[0]
+            f1_data = comparison_df[comparison_df['Símbolo'] == fighter1].iloc[0]
+            f2_data = comparison_df[comparison_df['Símbolo'] == fighter2].iloc[0]
             
             battles = [
-                ('Current Position', 'Current DD (%)', True),  # True means lower is better
-                ('Historical Toughness', 'Worst DD (%)', False),  # False means higher is better
-                ('Pain Tolerance', 'Pain Index', True),
-                ('Recovery Power', 'Recovery Rate (%)', False),
-                ('Speed', 'Avg Recovery (days)', True)
+                ('Posición Actual', 'DD Actual (%)', True),  # True significa menor es mejor
+                ('Dureza Histórica', 'Peor DD (%)', False),  # False significa mayor es mejor
+                ('Tolerancia al Dolor', 'Índice de Dolor', True),
+                ('Poder de Recuperación', 'Tasa de Recuperación (%)', False),
+                ('Velocidad', 'Recuperación Promedio (días)', True)
             ]
             
             f1_wins = 0
@@ -1005,21 +989,21 @@ def display_comparison_analysis(symbols, period):
                     else:
                         st.error(f"{fighter2}: {f2_data[metric]:.1f}")
             
-            st.markdown(f"### 🏆 Winner: {fighter1 if f1_wins > f2_wins else fighter2} ({max(f1_wins, f2_wins)}-{min(f1_wins, f2_wins)})")
+            st.markdown(f"### 🏆 Ganador: {fighter1 if f1_wins > f2_wins else fighter2} ({max(f1_wins, f2_wins)}-{min(f1_wins, f2_wins)})")
 
 def display_sp500_analysis(symbols, period):
-    """Display S&P 500 aggregate analysis"""
+    """Mostrar análisis agregado del S&P 500"""
     
-    st.markdown("### 🌍 Market-Wide Pain Assessment")
+    st.markdown("### 🌍 Evaluación de Dolor a Nivel de Mercado")
     
-    # Load data for symbols
+    # Cargar datos para símbolos
     prices_df = load_index_components(symbols, period)
     
     if prices_df.empty:
-        st.error("Unable to load S&P 500 data")
+        st.error("No se pudo cargar datos del S&P 500")
         return
     
-    # Calculate aggregate metrics
+    # Calcular métricas agregadas
     all_episodes = []
     current_dds = []
     
@@ -1032,8 +1016,8 @@ def display_sp500_analysis(symbols, period):
             episode['symbol'] = symbol
             all_episodes.append(episode)
     
-    # Market health dashboard
-    st.markdown("### 🏥 Market Health Status")
+    # Panel de salud del mercado
+    st.markdown("### 🏥 Estado de Salud del Mercado")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1042,9 +1026,9 @@ def display_sp500_analysis(symbols, period):
         health_color = "🟢" if avg_dd > -5 else "🟡" if avg_dd > -10 else "🟠" if avg_dd > -20 else "🔴"
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>{health_color} Market Health</h3>
+            <h3>{health_color} Salud del Mercado</h3>
             <p style='font-size: 2em;'>{avg_dd:.1f}%</p>
-            <p>Average DD</p>
+            <p>DD Promedio</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1053,9 +1037,9 @@ def display_sp500_analysis(symbols, period):
         pct_in_dd = (stocks_in_dd / len(current_dds)) * 100
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>📊 Stocks Hurting</h3>
+            <h3>📊 Acciones Sufriendo</h3>
             <p style='font-size: 2em;'>{pct_in_dd:.0f}%</p>
-            <p>In 10%+ DD</p>
+            <p>En DD de 10%+</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1064,9 +1048,9 @@ def display_sp500_analysis(symbols, period):
             recent_episodes = [e for e in all_episodes if (datetime.now().date() - e['start_date'].date()).days < 90]
             st.markdown(f"""
             <div class='metric-card'>
-                <h3>🌊 Recent Events</h3>
+                <h3>🌊 Eventos Recientes</h3>
                 <p style='font-size: 2em;'>{len(recent_episodes)}</p>
-                <p>Last 90 days</p>
+                <p>Últimos 90 días</p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -1075,53 +1059,53 @@ def display_sp500_analysis(symbols, period):
         bear_pct = (bear_market / len(current_dds)) * 100
         st.markdown(f"""
         <div class='metric-card'>
-            <h3>🐻 Bear Territory</h3>
+            <h3>🐻 Territorio Bajista</h3>
             <p style='font-size: 2em;'>{bear_pct:.0f}%</p>
-            <p>In 20%+ DD</p>
+            <p>En DD de 20%+</p>
         </div>
         """, unsafe_allow_html=True)
     
-    # Market mood assessment
+    # Evaluación del estado de ánimo del mercado
     if avg_dd > -5:
-        mood = "😊 Euphoric - Markets feeling great!"
+        mood = "😊 Eufórico - ¡Los mercados se sienten genial!"
         mood_color = "green"
     elif avg_dd > -10:
-        mood = "😐 Cautious - Some nervousness creeping in"
+        mood = "😐 Cauteloso - Algo de nerviosismo apareciendo"
         mood_color = "yellow"
     elif avg_dd > -20:
-        mood = "😰 Fearful - Significant stress in the system"
+        mood = "😰 Temeroso - Estrés significativo en el sistema"
         mood_color = "orange"
     else:
-        mood = "😱 Panic - Maximum fear, potential opportunity?"
+        mood = "😱 Pánico - Miedo máximo, ¿oportunidad potencial?"
         mood_color = "red"
     
     st.markdown(f"""
     <div class='insight-box'>
-        <h2>Market Mood: {mood}</h2>
-        <p>Based on {len(current_dds)} stocks analyzed</p>
+        <h2>Estado de Ánimo del Mercado: {mood}</h2>
+        <p>Basado en {len(current_dds)} acciones analizadas</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Worst performers
-    st.markdown("### 💀 Walking Wounded (Worst Current Drawdowns)")
+    # Peores performers
+    st.markdown("### 💀 Heridos Andantes (Peores Drawdowns Actuales)")
     
     worst_current = pd.DataFrame({
-        'Symbol': prices_df.columns,
-        'Current DD (%)': current_dds
-    }).nsmallest(10, 'Current DD (%)')
+        'Símbolo': prices_df.columns,
+        'DD Actual (%)': current_dds
+    }).nsmallest(10, 'DD Actual (%)')
     
     fig = go.Figure(data=[go.Bar(
-        x=worst_current['Symbol'],
-        y=worst_current['Current DD (%)'],
-        marker=dict(color=worst_current['Current DD (%)'],
+        x=worst_current['Símbolo'],
+        y=worst_current['DD Actual (%)'],
+        marker=dict(color=worst_current['DD Actual (%)'],
                    colorscale='Reds',
                    showscale=False),
-        text=[f"{dd:.1f}%" for dd in worst_current['Current DD (%)']],
+        text=[f"{dd:.1f}%" for dd in worst_current['DD Actual (%)']],
         textposition='auto'
     )])
     
     fig.update_layout(
-        title="Bottom 10 - Currently Suffering Most",
+        title="Bottom 10 - Actualmente Sufriendo Más",
         height=400,
         plot_bgcolor='#0e1117',
         paper_bgcolor='#0e1117',
@@ -1130,11 +1114,11 @@ def display_sp500_analysis(symbols, period):
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Historical perspective
+    # Perspectiva histórica
     if all_episodes:
-        st.markdown("### 📜 Historical Perspective")
+        st.markdown("### 📜 Perspectiva Histórica")
         
-        # Group by year
+        # Agrupar por año
         episodes_df = pd.DataFrame(all_episodes)
         episodes_df['year'] = pd.to_datetime(episodes_df['start_date']).dt.year
         
@@ -1146,11 +1130,11 @@ def display_sp500_analysis(symbols, period):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**📅 Drawdowns by Year**")
+            st.markdown("**📅 Drawdowns por Año**")
             st.bar_chart(yearly_stats[('max_drawdown', 'count')])
         
         with col2:
-            st.markdown("**😰 Average Pain by Year**")
+            st.markdown("**😰 Dolor Promedio por Año**")
             st.line_chart(abs(yearly_stats[('max_drawdown', 'mean')] * 100))
 
 if __name__ == "__main__":
