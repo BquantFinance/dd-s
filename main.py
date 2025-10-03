@@ -557,22 +557,31 @@ def main():
         else:
             display_sp500_analysis(symbols, period)
     else:
-        # Pantalla de bienvenida
-        st.markdown("""
-        <div style='text-align: center; padding: 50px;'>
-            <h2>Bienvenido al Laboratorio de Inteligencia de Drawdowns</h2>
-            <p style='font-size: 1.2em; color: #8b92a8;'>
-            Donde convertimos el dolor del mercado en insights accionables
-            </p>
-            
-            <div style='margin-top: 50px;'>
-                <h3>Elige Tu Aventura:</h3>
-                <p>🎯 <b>Acción Individual</b> - Inmersión profunda en los puntos de dolor de una acción</p>
-                <p>📊 <b>Comparación de Índices</b> - Compara cómo diferentes acciones manejan los drawdowns</p>
-                <p>🏆 <b>Análisis S&P 500</b> - Evaluación de dolor a nivel de mercado</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Pantalla de bienvenida con componentes nativos de Streamlit
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("## Bienvenido al Laboratorio de Inteligencia de Drawdowns")
+            st.markdown("##### Donde convertimos el dolor del mercado en insights accionables")
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        
+        st.markdown("### Elige Tu Aventura:")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.info("**🎯 Acción Individual**")
+            st.write("Inmersión profunda en los puntos de dolor de una acción")
+        
+        with col2:
+            st.info("**📊 Comparación de Índices**")
+            st.write("Compara cómo diferentes acciones manejan los drawdowns")
+        
+        with col3:
+            st.info("**🏆 Análisis S&P 500**")
+            st.write("Evaluación de dolor a nivel de mercado")
 
 def display_individual_analysis(symbol, period):
     """Mostrar análisis para acción individual"""
@@ -594,56 +603,53 @@ def display_individual_analysis(symbol, period):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>{decision['status']}</h3>
-            <p style='font-size: 2em; margin: 0;'>{current_dd:.1f}%</p>
-            <p style='margin: 0;'>Drawdown Actual</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label=decision['status'],
+            value=f"{current_dd:.1f}%",
+            delta=None,
+            help="Drawdown Actual"
+        )
     
     with col2:
         worst_dd = min(e['max_drawdown'] for e in episodes) * 100 if episodes else 0
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>😱 El Peor</h3>
-            <p style='font-size: 2em; margin: 0;'>{worst_dd:.1f}%</p>
-            <p style='margin: 0;'>Dolor Máximo</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label="😱 El Peor",
+            value=f"{worst_dd:.1f}%",
+            delta=None,
+            help="Dolor Máximo"
+        )
     
     with col3:
         pain_index = calculate_pain_index(calculate_drawdowns(prices))
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>💊 Índice de Dolor</h3>
-            <p style='font-size: 2em; margin: 0;'>{pain_index:.1f}</p>
-            <p style='margin: 0;'>Dolor Promedio</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label="💊 Índice de Dolor",
+            value=f"{pain_index:.1f}",
+            delta=None,
+            help="Dolor Promedio"
+        )
     
     with col4:
         if episodes:
             recovery_rate = sum(1 for e in episodes if e['recovered']) / len(episodes) * 100
         else:
             recovery_rate = 0
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>💪 Tasa de Recuperación</h3>
-            <p style='font-size: 2em; margin: 0;'>{recovery_rate:.0f}%</p>
-            <p style='margin: 0;'>Ratio de Regreso</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label="💪 Tasa de Recuperación",
+            value=f"{recovery_rate:.0f}%",
+            delta=None,
+            help="Ratio de Regreso"
+        )
     
-    # Caja de ayuda para decisiones
-    st.markdown(f"""
-    <div class='insight-box'>
-        <h3>🤔 ¿Qué Deberías Hacer?</h3>
-        <p><b>{decision['action']}</b></p>
-        <p>Este drawdown es peor que el {decision['percentile']:.0f}% de los drawdowns históricos.</p>
-        <p>Recuerda: Cada drawdown se siente como el peor cuando estás en él.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Caja de ayuda para decisiones con componentes nativos
+    st.info(f"""
+    ### 🤔 ¿Qué Deberías Hacer?
+    
+    **{decision['action']}**
+    
+    Este drawdown es peor que el {decision['percentile']:.0f}% de los drawdowns históricos.
+    
+    Recuerda: Cada drawdown se siente como el peor cuando estás en él.
+    """)
     
     # Visualizaciones principales
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -662,14 +668,9 @@ def display_individual_analysis(symbol, period):
                 recoveries = [e for e in episodes if e['recovered']]
                 if recoveries:
                     avg_recovery = np.mean([e['recovery_days'] for e in recoveries])
-                    st.markdown(f"""
-                    <div class='metric-card'>
-                        <h3>⏱️ Estadísticas de Recuperación</h3>
-                        <p>Promedio: {avg_recovery:.0f} días</p>
-                        <p>Más rápida: {min(e['recovery_days'] for e in recoveries)} días</p>
-                        <p>Más lenta: {max(e['recovery_days'] for e in recoveries)} días</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.metric("⏱️ Recuperación Promedio", f"{avg_recovery:.0f} días")
+                    st.metric("🚀 Más Rápida", f"{min(e['recovery_days'] for e in recoveries)} días")
+                    st.metric("🐢 Más Lenta", f"{max(e['recovery_days'] for e in recoveries)} días")
     
     with tab2:
         st.markdown("### 📚 Tu Historial de Drawdowns")
@@ -803,11 +804,7 @@ def display_individual_analysis(symbol, period):
         st.markdown("### 🎯 Herramientas de Apoyo a Decisiones")
         
         # Calculadora de tolerancia al riesgo
-        st.markdown("""
-        <div class='warning-box'>
-            <h3>🎰 Tu Chequeo de Realidad de Riesgo</h3>
-        </div>
-        """, unsafe_allow_html=True)
+        st.warning("### 🎰 Tu Chequeo de Realidad de Riesgo")
         
         col1, col2 = st.columns(2)
         
@@ -1030,46 +1027,42 @@ def display_sp500_analysis(symbols, period):
     with col1:
         avg_dd = np.mean(current_dds)
         health_color = "🟢" if avg_dd > -5 else "🟡" if avg_dd > -10 else "🟠" if avg_dd > -20 else "🔴"
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>{health_color} Salud del Mercado</h3>
-            <p style='font-size: 2em;'>{avg_dd:.1f}%</p>
-            <p>DD Promedio</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label=f"{health_color} Salud del Mercado",
+            value=f"{avg_dd:.1f}%",
+            delta=None,
+            help="DD Promedio"
+        )
     
     with col2:
         stocks_in_dd = sum(1 for dd in current_dds if dd < -10)
         pct_in_dd = (stocks_in_dd / len(current_dds)) * 100
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>📊 Acciones Sufriendo</h3>
-            <p style='font-size: 2em;'>{pct_in_dd:.0f}%</p>
-            <p>En DD de 10%+</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label="📊 Acciones Sufriendo",
+            value=f"{pct_in_dd:.0f}%",
+            delta=None,
+            help="En DD de 10%+"
+        )
     
     with col3:
         if all_episodes:
             recent_episodes = [e for e in all_episodes if (datetime.now().date() - e['start_date'].date()).days < 90]
-            st.markdown(f"""
-            <div class='metric-card'>
-                <h3>🌊 Eventos Recientes</h3>
-                <p style='font-size: 2em;'>{len(recent_episodes)}</p>
-                <p>Últimos 90 días</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.metric(
+                label="🌊 Eventos Recientes",
+                value=f"{len(recent_episodes)}",
+                delta=None,
+                help="Últimos 90 días"
+            )
         
     with col4:
         bear_market = sum(1 for dd in current_dds if dd < -20)
         bear_pct = (bear_market / len(current_dds)) * 100
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>🐻 Territorio Bajista</h3>
-            <p style='font-size: 2em;'>{bear_pct:.0f}%</p>
-            <p>En DD de 20%+</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric(
+            label="🐻 Territorio Bajista",
+            value=f"{bear_pct:.0f}%",
+            delta=None,
+            help="En DD de 20%+"
+        )
     
     # Evaluación del estado de ánimo del mercado
     if avg_dd > -5:
@@ -1113,8 +1106,8 @@ def display_sp500_analysis(symbols, period):
     fig.update_layout(
         title="Bottom 10 - Actualmente Sufriendo Más",
         height=400,
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
+        plot_bgcolor='#0a0e27',
+        paper_bgcolor='#0a0e27',
         font=dict(color='white')
     )
     
