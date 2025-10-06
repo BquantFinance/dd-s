@@ -897,66 +897,6 @@ if analysis_type == "📊 Análisis Individual":
         
         st.dataframe(periods_df, use_container_width=True, hide_index=True)
         
-        # TIME TO NEW HIGH
-        st.markdown("### ⏰ Tiempo hasta Nuevo Máximo Histórico")
-        
-        time_to_highs = calculate_time_to_new_high(ticker_data)
-        
-        if time_to_highs:
-            # Gráfico de barras temporal
-            fig_time_high = go.Figure()
-            
-            fig_time_high.add_trace(go.Bar(
-                x=[h['new_high'] for h in time_to_highs],
-                y=[h['days'] for h in time_to_highs],
-                marker=dict(
-                    color=[h['days'] for h in time_to_highs],
-                    colorscale=[[0, '#10b981'], [0.5, '#fbbf24'], [1, '#ef4444']],
-                    line=dict(color='#2d3344', width=1),
-                    showscale=True,
-                    colorbar=dict(title="Días")
-                ),
-                hovertemplate='<b>Nuevo Máximo:</b> %{x|%Y-%m-%d}<br><b>Días transcurridos:</b> %{y}<br><b>Precio:</b> $%{text:.2f}<extra></extra>',
-                text=[h['price'] for h in time_to_highs]
-            ))
-            
-            fig_time_high.update_layout(**get_plotly_layout(
-                title=f"Tiempo hasta Alcanzar Nuevo Máximo - {selected_ticker}",
-                xaxis_title="Fecha del Nuevo Máximo",
-                yaxis_title="Días desde Anterior Máximo",
-                height=450,
-                showlegend=False
-            ))
-            
-            st.plotly_chart(fig_time_high, use_container_width=True)
-            
-            # Estadísticas en tabla
-            days_list = [h['days'] for h in time_to_highs]
-            
-            stats_table = pd.DataFrame([{
-                'Métrica': 'Tiempo Medio',
-                'Valor': f"{np.mean(days_list):.0f} días"
-            }, {
-                'Métrica': 'Tiempo Mediano',
-                'Valor': f"{np.median(days_list):.0f} días"
-            }, {
-                'Métrica': 'Tiempo Mínimo',
-                'Valor': f"{min(days_list)} días"
-            }, {
-                'Métrica': 'Tiempo Máximo',
-                'Valor': f"{max(days_list):,} días"
-            }, {
-                'Métrica': 'Desviación Estándar',
-                'Valor': f"{np.std(days_list):.0f} días"
-            }, {
-                'Métrica': 'Total de Nuevos Máximos',
-                'Valor': f"{len(days_list)}"
-            }])
-            
-            st.dataframe(stats_table, hide_index=True, use_container_width=True)
-        else:
-            st.info("No hay suficientes datos para calcular el tiempo hasta nuevo máximo.")
-        
     else:
         st.info("No se encontraron períodos de drawdown significativos (>5%) en el rango seleccionado.")
 
@@ -1061,14 +1001,11 @@ elif analysis_type == "🌐 Análisis Agregado":
     with col2:
         st.markdown("**Atajos rápidos:**")
         if st.button("📊 Top 30 por capitalización", key="top30"):
-            # Usar las primeras 30 como proxy de capitalización
             heatmap_tickers = valid_tickers[:min(30, len(valid_tickers))]
         if st.button("🔴 Top 20 peor Max DD", key="worst20"):
-            # Seleccionar las 20 con peor max drawdown
             worst_20 = max_dd_all.nsmallest(20).index.tolist()
             heatmap_tickers = worst_20
         if st.button("🎲 Random 25", key="random25"):
-            # Selección aleatoria
             import random
             heatmap_tickers = random.sample(valid_tickers, min(25, len(valid_tickers)))
     
@@ -1842,6 +1779,143 @@ else:
             st.plotly_chart(fig12, use_container_width=True)
     else:
         st.warning("⚠️ Por favor, selecciona al menos una acción para realizar la comparativa")
+    
+    # ==================== TIME TO NEW HIGH COMPARATIVO ====================
+    if len(selected_tickers) > 0:
+        st.markdown("---")
+        st.markdown("### ⏰ Comparación: Tiempo hasta Nuevo Máximo")
+        
+        time_to_high_comparison = {}
+        
+        for ticker in selected_tickers:
+            ticker_data_comp = df[ticker].dropna()
+            
+            if date_range == "Últimos 5 años":
+                ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=5))]
+            elif date_range == "Últimos 3 años":
+                ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=3))]
+            elif date_range == "Último año":
+                ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=1))]
+            
+            time_to_highs = calculate_time_to_new_high(ticker_data_comp)
+            
+            if time_to_highs:
+                days_list = [h['days'] for h in time_to_highs]
+                time_to_high_comparison[ticker] = {
+                    'mean': np.mean(days_list),
+                    'median': np.median(days_list),
+                    'min': min(days_list),
+                    'max': max(days_list),
+                    'count': len(days_list)
+                }
+        
+        if time_to_high_comparison:
+            # Gráfico de barras agrupadas
+            comparison_df_time = pd.DataFrame(time_to_high_comparison).T
+            
+            fig_time_comp = go.Figure()
+            
+            fig_time_comp.add_trace(go.Bar(
+                name='Promedio',
+                x=comparison_df_time.index,
+                y=comparison_df_time['mean'],
+                marker_color='#3b82f6',
+                hovertemplate='<b>%{x}</b><br>Promedio: %{y:.0f} días<extra></extra>'
+            ))
+            
+            fig_time_comp.add_trace(go.Bar(
+                name='Mediana',
+                x=comparison_df_time.index,
+                y=comparison_df_time['median'],
+                marker_color='#10b981',
+                hovertemplate='<b>%{x}</b><br>Mediana: %{y:.0f} días<extra></extra>'
+            ))
+            
+            fig_time_comp.add_trace(go.Bar(
+                name='Máximo',
+                x=comparison_df_time.index,
+                y=comparison_df_time['max'],
+                marker_color='#ef4444',
+                hovertemplate='<b>%{x}</b><br>Máximo: %{y:,} días<extra></extra>'
+            ))
+            
+            fig_time_comp.update_layout(**get_plotly_layout(
+                title="Tiempo hasta Nuevo Máximo - Comparación",
+                xaxis_title="",
+                yaxis_title="Días",
+                height=450,
+                barmode='group',
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    bgcolor="rgba(20,24,36,0.8)",
+                    bordercolor="#2d3344",
+                    borderwidth=2
+                )
+            ))
+            
+            st.plotly_chart(fig_time_comp, use_container_width=True)
+            
+            # Tabla comparativa
+            time_comparison_table = pd.DataFrame([{
+                'Ticker': ticker,
+                'Promedio (días)': f"{data['mean']:.0f}",
+                'Mediana (días)': f"{data['median']:.0f}",
+                'Mínimo (días)': data['min'],
+                'Máximo (días)': f"{data['max']:,}",
+                'Nº Nuevos Máximos': data['count']
+            } for ticker, data in time_to_high_comparison.items()])
+            
+            st.dataframe(
+                time_comparison_table.set_index('Ticker').style.background_gradient(
+                    cmap='RdYlGn_r',
+                    subset=['Promedio (días)', 'Mediana (días)', 'Máximo (días)']
+                ),
+                use_container_width=True
+            )
+            
+            # Comparación de distribuciones
+            st.markdown("#### Distribución Comparativa")
+            
+            fig_time_dist = go.Figure()
+            
+            for i, ticker in enumerate(selected_tickers):
+                ticker_data_comp = df[ticker].dropna()
+                
+                if date_range == "Últimos 5 años":
+                    ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=5))]
+                elif date_range == "Últimos 3 años":
+                    ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=3))]
+                elif date_range == "Último año":
+                    ticker_data_comp = ticker_data_comp[ticker_data_comp.index >= (ticker_data_comp.index[-1] - pd.DateOffset(years=1))]
+                
+                time_to_highs = calculate_time_to_new_high(ticker_data_comp)
+                
+                if time_to_highs:
+                    days_list = [h['days'] for h in time_to_highs]
+                    
+                    fig_time_dist.add_trace(go.Box(
+                        y=days_list,
+                        name=ticker,
+                        marker_color=colors[i % len(colors)],
+                        boxmean='sd',
+                        hovertemplate=f'<b>{ticker}</b><br>Días: %{{y}}<extra></extra>'
+                    ))
+            
+            fig_time_dist.update_layout(**get_plotly_layout(
+                title="Distribución del Tiempo hasta Nuevo Máximo",
+                xaxis_title="",
+                yaxis_title="Días hasta Nuevo Máximo",
+                height=450,
+                showlegend=False
+            ))
+            
+            st.plotly_chart(fig_time_dist, use_container_width=True)
+        else:
+            st.info("No hay suficientes datos para calcular el tiempo hasta nuevo máximo para las acciones seleccionadas.")
     
     # ==================== ANÁLISIS COMPARATIVO AVANZADO ====================
     if len(selected_tickers) > 0:
