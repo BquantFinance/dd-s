@@ -431,7 +431,6 @@ st.markdown("""
        ============================================ */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
     
     /* ============================================
        CONTENEDOR PRINCIPAL
