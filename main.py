@@ -555,6 +555,86 @@ def drawdown_metrics(dd):
         'Días en Máximo Histórico': (dd == 0).sum()
     }
 
+def calculate_pain_index(dd):
+    """Calcula el Pain Index (Ulcer Index)"""
+    return np.sqrt(np.mean(dd**2))
+
+def identify_drawdown_periods(prices, dd, threshold=-1.0):
+    """Identifica períodos de drawdown significativos"""
+    in_drawdown = dd < threshold
+    drawdown_changes = in_drawdown.astype(int).diff()
+    
+    periods = []
+    start_idx = None
+    
+    for i, (date, in_dd) in enumerate(in_drawdown.items()):
+        if drawdown_changes.iloc[i] == 1:  # Start of drawdown
+            start_idx = i
+        elif drawdown_changes.iloc[i] == -1 and start_idx is not None:  # End of drawdown
+            end_idx = i - 1
+            period_dd = dd.iloc[start_idx:end_idx+1]
+            
+            if len(period_dd) > 0:
+                max_dd = period_dd.min()
+                duration = len(period_dd)
+                start_date = dd.index[start_idx]
+                end_date = dd.index[end_idx]
+                
+                # Find recovery date (when price reaches previous high again)
+                recovery_idx = None
+                peak_price = prices.iloc[start_idx]
+                for j in range(end_idx + 1, len(prices)):
+                    if prices.iloc[j] >= peak_price:
+                        recovery_idx = j
+                        break
+                
+                recovery_date = prices.index[recovery_idx] if recovery_idx else None
+                recovery_days = (recovery_idx - start_idx) if recovery_idx else None
+                
+                periods.append({
+                    'start': start_date,
+                    'end': end_date,
+                    'recovery': recovery_date,
+                    'max_dd': max_dd,
+                    'duration': duration,
+                    'recovery_days': recovery_days,
+                    'severity': abs(max_dd) * duration
+                })
+            
+            start_idx = None
+    
+    return periods
+
+def calculate_underwater_periods(dd):
+    """Calcula períodos underwater (tiempo bajo máximo histórico)"""
+    underwater = dd < -0.01  # Más del 0.01% bajo el máximo
+    
+    # Calcular períodos consecutivos
+    underwater_changes = underwater.astype(int).diff()
+    periods = []
+    start_idx = None
+    
+    for i, is_underwater in enumerate(underwater):
+        if underwater_changes.iloc[i] == 1:
+            start_idx = i
+        elif underwater_changes.iloc[i] == -1 and start_idx is not None:
+            periods.append({
+                'start': dd.index[start_idx],
+                'end': dd.index[i-1],
+                'days': i - start_idx
+            })
+            start_idx = None
+    
+    # Si todavía está underwater
+    if start_idx is not None:
+        periods.append({
+            'start': dd.index[start_idx],
+            'end': dd.index[-1],
+            'days': len(dd) - start_idx
+        })
+    
+    return periods
+
 def get_plotly_layout(**kwargs):
     """Retorna el layout de Plotly con tema oscuro personalizado"""
     base_layout = {
@@ -742,6 +822,228 @@ if analysis_type == "📊 Análisis Individual":
             showlegend=False
         ))
         st.plotly_chart(fig4, use_container_width=True)
+    
+    # ==================== NUEVAS CARACTERÍSTICAS AVANZADAS ====================
+    st.markdown("---")
+    st.markdown("## 🔬 Análisis Avanzado de Drawdown")
+    
+    # 1. PAIN INDEX / ULCER INDEX
+    st.markdown("### 😰 Pain Index (Ulcer Index)")
+    
+    pain_index = calculate_pain_index(dd)
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Pain Index", f"{pain_index:.2f}%", 
+                help="Mide el dolor sostenido de estar en drawdown. Valores más altos = mayor dolor.")
+    col2.metric("Max Pain Day", f"{dd.min():.2f}%")
+    col3.metric("% Tiempo Underwater", f"{(dd < -0.01).sum() / len(dd) * 100:.1f}%")
+    
+    # 2. IDENTIFICAR PERÍODOS DE DRAWDOWN MAYORES
+    st.markdown("### 🎯 Períodos de Drawdown Significativos")
+    
+    dd_periods = identify_drawdown_periods(ticker_data, dd, threshold=-5.0)
+    
+    if dd_periods:
+        # Ordenar por severidad
+        dd_periods_sorted = sorted(dd_periods, key=lambda x: x['severity'], reverse=True)
+        
+        # Mostrar top 5 drawdowns más severos
+        st.markdown("#### Top 5 Drawdowns Más Severos")
+        
+        top_periods = dd_periods_sorted[:5]
+        
+        periods_df = pd.DataFrame([{
+            'Inicio': p['start'].strftime('%Y-%m-%d'),
+            'Fin': p['end'].strftime('%Y-%m-%d'),
+            'Recuperación': p['recovery'].strftime('%Y-%m-%d') if p['recovery'] else 'En curso',
+            'Max DD (%)': f"{p['max_dd']:.2f}",
+            'Duración (días)': p['duration'],
+            'Días hasta Recuperación': p['recovery_days'] if p['recovery_days'] else 'N/A',
+            'Severity Score': f"{p['severity']:.0f}"
+        } for p in top_periods])
+        
+        st.dataframe(periods_df, use_container_width=True, hide_index=True)
+        
+        # 3. GRÁFICO DE RECUPERACIÓN: PROFUNDIDAD VS TIEMPO
+        st.markdown("### 📈 Análisis de Recuperación: Profundidad vs Tiempo")
+        
+        recovery_data = [p for p in dd_periods if p['recovery_days'] is not None]
+        
+        if recovery_data:
+            fig_recovery = go.Figure()
+            
+            fig_recovery.add_trace(go.Scatter(
+                x=[abs(p['max_dd']) for p in recovery_data],
+                y=[p['recovery_days'] for p in recovery_data],
+                mode='markers',
+                marker=dict(
+                    size=[p['severity']/50 for p in recovery_data],
+                    color=[p['severity'] for p in recovery_data],
+                    colorscale=[[0, '#fbbf24'], [0.5, '#ef4444'], [1, '#dc2626']],
+                    showscale=True,
+                    colorbar=dict(title="Severity"),
+                    line=dict(color='#2d3344', width=1)
+                ),
+                text=[f"Inicio: {p['start'].strftime('%Y-%m-%d')}<br>Max DD: {p['max_dd']:.2f}%<br>Recuperación: {p['recovery_days']} días" 
+                      for p in recovery_data],
+                hovertemplate='<b>Drawdown:</b> %{x:.2f}%<br><b>Recuperación:</b> %{y} días<br>%{text}<extra></extra>',
+                name='Períodos de Drawdown'
+            ))
+            
+            # Línea de tendencia
+            if len(recovery_data) > 1:
+                x_vals = [abs(p['max_dd']) for p in recovery_data]
+                y_vals = [p['recovery_days'] for p in recovery_data]
+                z = np.polyfit(x_vals, y_vals, 1)
+                p = np.poly1d(z)
+                x_line = np.linspace(min(x_vals), max(x_vals), 100)
+                
+                fig_recovery.add_trace(go.Scatter(
+                    x=x_line,
+                    y=p(x_line),
+                    mode='lines',
+                    line=dict(color='#3b82f6', dash='dash', width=2),
+                    name='Tendencia',
+                    hoverinfo='skip'
+                ))
+            
+            fig_recovery.update_layout(**get_plotly_layout(
+                title="Relación entre Profundidad de Drawdown y Tiempo de Recuperación",
+                xaxis_title="Profundidad del Drawdown (%)",
+                yaxis_title="Días hasta Recuperación",
+                height=500,
+                showlegend=True
+            ))
+            
+            st.plotly_chart(fig_recovery, use_container_width=True)
+            
+            # Estadísticas de recuperación
+            col1, col2, col3 = st.columns(3)
+            avg_recovery = np.mean([p['recovery_days'] for p in recovery_data])
+            median_recovery = np.median([p['recovery_days'] for p in recovery_data])
+            max_recovery = max([p['recovery_days'] for p in recovery_data])
+            
+            col1.metric("Recuperación Media", f"{avg_recovery:.0f} días")
+            col2.metric("Recuperación Mediana", f"{median_recovery:.0f} días")
+            col3.metric("Recuperación Más Larga", f"{max_recovery:.0f} días")
+        else:
+            st.info("No hay suficientes períodos de drawdown con recuperación completa para el análisis.")
+        
+        # 4. UNDERWATER CHART
+        st.markdown("### 🌊 Gráfico Underwater - Tiempo Bajo Máximo Histórico")
+        
+        underwater_periods = calculate_underwater_periods(dd)
+        
+        fig_underwater = go.Figure()
+        
+        # Área principal del drawdown
+        fig_underwater.add_trace(go.Scatter(
+            x=dd.index,
+            y=dd.values,
+            fill='tozeroy',
+            fillcolor='rgba(239, 68, 68, 0.3)',
+            line=dict(color='#ef4444', width=1.5),
+            name='Underwater',
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Underwater: %{y:.2f}%<extra></extra>'
+        ))
+        
+        # Línea en 0%
+        fig_underwater.add_hline(y=0, line_dash="solid", line_color="#10b981", 
+                                 line_width=2, opacity=0.5)
+        
+        # Resaltar períodos underwater largos (>100 días)
+        long_underwater = [p for p in underwater_periods if p['days'] > 100]
+        
+        for period in long_underwater:
+            fig_underwater.add_vrect(
+                x0=period['start'],
+                x1=period['end'],
+                fillcolor="rgba(239, 68, 68, 0.15)",
+                layer="below",
+                line_width=0,
+            )
+        
+        fig_underwater.update_layout(**get_plotly_layout(
+            title=f"Períodos Underwater - {selected_ticker}",
+            xaxis_title="Fecha",
+            yaxis_title="Drawdown (%)",
+            height=500,
+            showlegend=False
+        ))
+        
+        st.plotly_chart(fig_underwater, use_container_width=True)
+        
+        # Estadísticas underwater
+        if underwater_periods:
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_underwater_days = sum([p['days'] for p in underwater_periods])
+            longest_underwater = max([p['days'] for p in underwater_periods])
+            avg_underwater = np.mean([p['days'] for p in underwater_periods])
+            pct_underwater = (total_underwater_days / len(dd)) * 100
+            
+            col1.metric("Días Totales Underwater", f"{total_underwater_days:,}")
+            col2.metric("Período Más Largo", f"{longest_underwater:,} días")
+            col3.metric("Promedio por Período", f"{avg_underwater:.0f} días")
+            col4.metric("% Tiempo Underwater", f"{pct_underwater:.1f}%")
+        
+        # 5. DISTRIBUCIÓN DE DURACIÓN DE DRAWDOWNS
+        st.markdown("### ⏱️ Distribución de Duración de Drawdowns")
+        
+        durations = [p['duration'] for p in dd_periods]
+        
+        if durations:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_duration_hist = go.Figure(data=[go.Histogram(
+                    x=durations,
+                    nbinsx=20,
+                    marker=dict(
+                        color='#ef4444',
+                        line=dict(color='#dc2626', width=1.5)
+                    ),
+                    hovertemplate='Duración: %{x} días<br>Frecuencia: %{y}<extra></extra>'
+                )])
+                
+                fig_duration_hist.update_layout(**get_plotly_layout(
+                    title="Histograma de Duración",
+                    xaxis_title="Duración (días)",
+                    yaxis_title="Frecuencia",
+                    height=400,
+                    showlegend=False
+                ))
+                
+                st.plotly_chart(fig_duration_hist, use_container_width=True)
+            
+            with col2:
+                fig_duration_box = go.Figure(data=[go.Box(
+                    x=durations,
+                    marker=dict(color='#ef4444'),
+                    line=dict(color='#dc2626', width=2),
+                    hovertemplate='Duración: %{x} días<extra></extra>',
+                    boxmean='sd'
+                )])
+                
+                fig_duration_box.update_layout(**get_plotly_layout(
+                    title="Box Plot de Duración",
+                    xaxis_title="Duración (días)",
+                    height=400,
+                    showlegend=False
+                ))
+                
+                st.plotly_chart(fig_duration_box, use_container_width=True)
+            
+            # Estadísticas de duración
+            col1, col2, col3, col4 = st.columns(4)
+            
+            col1.metric("Duración Media", f"{np.mean(durations):.0f} días")
+            col2.metric("Duración Mediana", f"{np.median(durations):.0f} días")
+            col3.metric("Duración Mínima", f"{min(durations)} días")
+            col4.metric("Duración Máxima", f"{max(durations)} días")
+        
+    else:
+        st.info("No se encontraron períodos de drawdown significativos (>5%) en el rango seleccionado.")
 
 # ==================== ANÁLISIS AGREGADO ====================
 elif analysis_type == "🌐 Análisis Agregado":
@@ -979,6 +1281,238 @@ elif analysis_type == "🌐 Análisis Agregado":
         height=450, 
         use_container_width=True
     )
+    
+    # ==================== ANÁLISIS AGREGADO AVANZADO ====================
+    st.markdown("---")
+    st.markdown("## 🔬 Análisis Avanzado Agregado")
+    
+    # 1. PAIN INDEX PARA TODAS LAS ACCIONES
+    st.markdown("### 😰 Pain Index del Mercado")
+    
+    with st.spinner("⏳ Calculando Pain Index para todas las acciones..."):
+        pain_indices = {}
+        for ticker in valid_tickers:
+            ticker_dd = dd_df[ticker].dropna()
+            if len(ticker_dd) > 0:
+                pain_indices[ticker] = calculate_pain_index(ticker_dd)
+        
+        pain_df = pd.Series(pain_indices).sort_values(ascending=False)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Pain Index Medio", f"{pain_df.mean():.2f}%")
+    col2.metric("Pain Index Mediano", f"{pain_df.median():.2f}%")
+    col3.metric("Mayor Pain Index", f"{pain_df.max():.2f}%")
+    col4.metric("Menor Pain Index", f"{pain_df.min():.2f}%")
+    
+    # Top 10 acciones con mayor Pain Index
+    st.markdown("#### Top 10 Acciones con Mayor Pain Index")
+    
+    top_pain = pain_df.head(10)
+    
+    fig_pain = go.Figure(go.Bar(
+        x=top_pain.values,
+        y=top_pain.index,
+        orientation='h',
+        marker=dict(
+            color=top_pain.values,
+            colorscale=[[0, '#fbbf24'], [0.5, '#ef4444'], [1, '#dc2626']],
+            line=dict(color='#991b1b', width=1.5)
+        ),
+        hovertemplate='<b>%{y}</b><br>Pain Index: %{x:.2f}%<extra></extra>'
+    ))
+    
+    fig_pain.update_layout(**get_plotly_layout(
+        title="Top 10 Acciones con Mayor Pain Index",
+        xaxis_title="Pain Index (%)",
+        yaxis_title="",
+        height=450,
+        showlegend=False
+    ))
+    
+    st.plotly_chart(fig_pain, use_container_width=True)
+    
+    # 2. DISTRIBUCIÓN DE PAIN INDEX
+    st.markdown("### 📊 Distribución del Pain Index en el Mercado")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig_pain_dist = go.Figure(data=[go.Histogram(
+            x=pain_df.values,
+            nbinsx=30,
+            marker=dict(
+                color='#ef4444',
+                line=dict(color='#dc2626', width=1.5)
+            ),
+            hovertemplate='Rango: %{x:.1f}%<br>Acciones: %{y}<extra></extra>'
+        )])
+        
+        fig_pain_dist.update_layout(**get_plotly_layout(
+            title="Distribución del Pain Index",
+            xaxis_title="Pain Index (%)",
+            yaxis_title="Número de Acciones",
+            height=400,
+            showlegend=False
+        ))
+        
+        st.plotly_chart(fig_pain_dist, use_container_width=True)
+    
+    with col2:
+        fig_pain_box = go.Figure(data=[go.Box(
+            y=pain_df.values,
+            marker=dict(color='#ef4444'),
+            line=dict(color='#dc2626', width=2),
+            hovertemplate='Pain Index: %{y:.2f}%<extra></extra>',
+            boxmean='sd'
+        )])
+        
+        fig_pain_box.update_layout(**get_plotly_layout(
+            title="Box Plot del Pain Index",
+            yaxis_title="Pain Index (%)",
+            height=400,
+            showlegend=False
+        ))
+        
+        st.plotly_chart(fig_pain_box, use_container_width=True)
+    
+    # 3. CORRELACIÓN: PAIN INDEX VS MAX DRAWDOWN
+    st.markdown("### 🎯 Relación: Pain Index vs Max Drawdown")
+    
+    correlation_data = pd.DataFrame({
+        'ticker': valid_tickers,
+        'pain_index': [pain_indices[t] for t in valid_tickers],
+        'max_dd': [max_dd_all[t] for t in valid_tickers]
+    })
+    
+    fig_correlation = go.Figure()
+    
+    fig_correlation.add_trace(go.Scatter(
+        x=correlation_data['max_dd'].abs(),
+        y=correlation_data['pain_index'],
+        mode='markers',
+        marker=dict(
+            size=8,
+            color=correlation_data['pain_index'],
+            colorscale=[[0, '#fbbf24'], [0.5, '#ef4444'], [1, '#dc2626']],
+            showscale=True,
+            colorbar=dict(title="Pain Index"),
+            line=dict(color='#2d3344', width=1)
+        ),
+        text=correlation_data['ticker'],
+        hovertemplate='<b>%{text}</b><br>Max DD: %{x:.2f}%<br>Pain Index: %{y:.2f}%<extra></extra>',
+        name='Acciones'
+    ))
+    
+    # Línea de tendencia
+    x_vals = correlation_data['max_dd'].abs().values
+    y_vals = correlation_data['pain_index'].values
+    z = np.polyfit(x_vals, y_vals, 1)
+    p = np.poly1d(z)
+    x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
+    
+    fig_correlation.add_trace(go.Scatter(
+        x=x_line,
+        y=p(x_line),
+        mode='lines',
+        line=dict(color='#3b82f6', dash='dash', width=2),
+        name='Tendencia',
+        hoverinfo='skip'
+    ))
+    
+    # Calcular correlación
+    corr = np.corrcoef(x_vals, y_vals)[0, 1]
+    
+    fig_correlation.update_layout(**get_plotly_layout(
+        title=f"Pain Index vs Max Drawdown (Correlación: {corr:.3f})",
+        xaxis_title="Max Drawdown (%)",
+        yaxis_title="Pain Index (%)",
+        height=500,
+        showlegend=True
+    ))
+    
+    st.plotly_chart(fig_correlation, use_container_width=True)
+    
+    # 4. TIEMPO UNDERWATER AGREGADO
+    st.markdown("### 🌊 Análisis de Tiempo Underwater del Mercado")
+    
+    with st.spinner("⏳ Calculando períodos underwater..."):
+        pct_underwater_all = {}
+        longest_underwater_all = {}
+        
+        for ticker in valid_tickers[:50]:  # Primeras 50 para velocidad
+            ticker_dd = dd_df[ticker].dropna()
+            if len(ticker_dd) > 0:
+                underwater_periods = calculate_underwater_periods(ticker_dd)
+                if underwater_periods:
+                    total_underwater = sum([p['days'] for p in underwater_periods])
+                    pct_underwater_all[ticker] = (total_underwater / len(ticker_dd)) * 100
+                    longest_underwater_all[ticker] = max([p['days'] for p in underwater_periods])
+    
+    if pct_underwater_all:
+        pct_underwater_series = pd.Series(pct_underwater_all).sort_values(ascending=False)
+        longest_underwater_series = pd.Series(longest_underwater_all).sort_values(ascending=False)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Top 10 % Tiempo Underwater")
+            
+            top_pct = pct_underwater_series.head(10)
+            
+            fig_pct_underwater = go.Figure(go.Bar(
+                x=top_pct.values,
+                y=top_pct.index,
+                orientation='h',
+                marker=dict(
+                    color=top_pct.values,
+                    colorscale='Reds',
+                    line=dict(color='#991b1b', width=1.5)
+                ),
+                hovertemplate='<b>%{y}</b><br>% Underwater: %{x:.1f}%<extra></extra>'
+            ))
+            
+            fig_pct_underwater.update_layout(**get_plotly_layout(
+                title="% Tiempo Underwater",
+                xaxis_title="% del Tiempo",
+                yaxis_title="",
+                height=400,
+                showlegend=False
+            ))
+            
+            st.plotly_chart(fig_pct_underwater, use_container_width=True)
+        
+        with col2:
+            st.markdown("#### Top 10 Período Underwater Más Largo")
+            
+            top_longest = longest_underwater_series.head(10)
+            
+            fig_longest_underwater = go.Figure(go.Bar(
+                x=top_longest.values,
+                y=top_longest.index,
+                orientation='h',
+                marker=dict(
+                    color=top_longest.values,
+                    colorscale='Reds',
+                    line=dict(color='#991b1b', width=1.5)
+                ),
+                hovertemplate='<b>%{y}</b><br>Días: %{x:,}<extra></extra>'
+            ))
+            
+            fig_longest_underwater.update_layout(**get_plotly_layout(
+                title="Período Más Largo Underwater",
+                xaxis_title="Días",
+                yaxis_title="",
+                height=400,
+                showlegend=False
+            ))
+            
+            st.plotly_chart(fig_longest_underwater, use_container_width=True)
+        
+        # Métricas agregadas
+        col1, col2, col3 = st.columns(3)
+        col1.metric("% Medio Underwater", f"{pct_underwater_series.mean():.1f}%")
+        col2.metric("Período Medio Más Largo", f"{longest_underwater_series.mean():.0f} días")
+        col3.metric("Período Máximo Observado", f"{longest_underwater_series.max():,} días")
 
 # ==================== COMPARATIVA MULTI-ACCIÓN ====================
 else:
