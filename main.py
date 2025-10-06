@@ -555,7 +555,6 @@ def drawdown_metrics(dd):
         'Días en Máximo Histórico': (dd == 0).sum()
     }
 
-# ==================== TEMA PLOTLY ====================
 def get_plotly_layout(**kwargs):
     """Retorna el layout de Plotly con tema oscuro personalizado"""
     base_layout = {
@@ -658,15 +657,13 @@ if analysis_type == "📊 Análisis Individual":
                   line_width=2, annotation_text=f"DD Promedio: {dd.mean():.2f}%",
                   annotation_position="right", annotation_font_size=12)
     
-    fig.update_layout(
-        **get_plotly_layout(
-            title=f"Drawdown Histórico - {selected_ticker}",
-            xaxis_title="Fecha",
-            yaxis_title="Drawdown (%)",
-            height=550,
-            showlegend=False
-        )
-    )
+    fig.update_layout(**get_plotly_layout(
+        title=f"Drawdown Histórico - {selected_ticker}",
+        xaxis_title="Fecha",
+        yaxis_title="Drawdown (%)",
+        height=550,
+        showlegend=False
+    ))
     st.plotly_chart(fig, use_container_width=True)
     
     # Gráfico de precio con máximos históricos
@@ -688,24 +685,22 @@ if analysis_type == "📊 Análisis Individual":
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Máximo: $%{y:.2f}<extra></extra>'
     ))
     
-    fig2.update_layout(
-        **get_plotly_layout(
-            title=f"Evolución del Precio - {selected_ticker}",
-            xaxis_title="Fecha",
-            yaxis_title="Precio ($)",
-            height=500,
-            legend=dict(
-                orientation="h", 
-                yanchor="bottom", 
-                y=1.02, 
-                xanchor="right", 
-                x=1,
-                bgcolor="rgba(20,24,36,0.8)",
-                bordercolor="#2d3344",
-                borderwidth=2
-            )
+    fig2.update_layout(**get_plotly_layout(
+        title=f"Evolución del Precio - {selected_ticker}",
+        xaxis_title="Fecha",
+        yaxis_title="Precio ($)",
+        height=500,
+        legend=dict(
+            orientation="h", 
+            yanchor="bottom", 
+            y=1.02, 
+            xanchor="right", 
+            x=1,
+            bgcolor="rgba(20,24,36,0.8)",
+            bordercolor="#2d3344",
+            borderwidth=2
         )
-    )
+    ))
     st.plotly_chart(fig2, use_container_width=True)
     
     # Análisis estadístico
@@ -723,15 +718,13 @@ if analysis_type == "📊 Análisis Individual":
             hovertemplate='Rango: %{x:.1f}%<br>Frecuencia: %{y}<extra></extra>'
         )])
         
-        fig3.update_layout(
-            **get_plotly_layout(
-                title="Histograma de Drawdowns",
-                xaxis_title="Drawdown (%)",
-                yaxis_title="Frecuencia",
-                height=400,
-                showlegend=False
-            )
-        )
+        fig3.update_layout(**get_plotly_layout(
+            title="Histograma de Drawdowns",
+            xaxis_title="Drawdown (%)",
+            yaxis_title="Frecuencia",
+            height=400,
+            showlegend=False
+        ))
         st.plotly_chart(fig3, use_container_width=True)
     
     with col2:
@@ -742,14 +735,12 @@ if analysis_type == "📊 Análisis Individual":
             hovertemplate='Valor: %{y:.2f}%<extra></extra>'
         )])
         
-        fig4.update_layout(
-            **get_plotly_layout(
-                title="Box Plot de Drawdowns",
-                yaxis_title="Drawdown (%)",
-                height=400,
-                showlegend=False
-            )
-        )
+        fig4.update_layout(**get_plotly_layout(
+            title="Box Plot de Drawdowns",
+            yaxis_title="Drawdown (%)",
+            height=400,
+            showlegend=False
+        ))
         st.plotly_chart(fig4, use_container_width=True)
 
 # ==================== ANÁLISIS AGREGADO ====================
@@ -824,15 +815,13 @@ elif analysis_type == "🌐 Análisis Agregado":
         hovertemplate='<b>%{y}</b><br>Max DD: %{x:.2f}%<extra></extra>'
     ))
     
-    fig5.update_layout(
-        **get_plotly_layout(
-            title="Top 10 Mayores Drawdowns Máximos del Período",
-            xaxis_title="Max Drawdown (%)",
-            yaxis_title="",
-            height=500,
-            showlegend=False
-        )
-    )
+    fig5.update_layout(**get_plotly_layout(
+        title="Top 10 Mayores Drawdowns Máximos del Período",
+        xaxis_title="Max Drawdown (%)",
+        yaxis_title="",
+        height=500,
+        showlegend=False
+    ))
     st.plotly_chart(fig5, use_container_width=True)
     
     # Heatmaps anuales
@@ -939,15 +928,13 @@ elif analysis_type == "🌐 Análisis Agregado":
             hovertemplate='Rango: %{x:.1f}%<br>Acciones: %{y}<extra></extra>'
         )])
         
-        fig8.update_layout(
-            **get_plotly_layout(
-                title="Distribución de Max Drawdowns",
-                xaxis_title="Max Drawdown (%)",
-                yaxis_title="Número de Acciones",
-                height=450,
-                showlegend=False
-            )
-        )
+        fig8.update_layout(**get_plotly_layout(
+            title="Distribución de Max Drawdowns",
+            xaxis_title="Max Drawdown (%)",
+            yaxis_title="Número de Acciones",
+            height=450,
+            showlegend=False
+        ))
         st.plotly_chart(fig8, use_container_width=True)
     
     with col2:
@@ -961,15 +948,13 @@ elif analysis_type == "🌐 Análisis Agregado":
             hovertemplate='Rango: %{x:.1f}%<br>Acciones: %{y}<extra></extra>'
         )])
         
-        fig9.update_layout(
-            **get_plotly_layout(
-                title="Distribución de Drawdowns Actuales",
-                xaxis_title="Drawdown Actual (%)",
-                yaxis_title="Número de Acciones",
-                height=450,
-                showlegend=False
-            )
-        )
+        fig9.update_layout(**get_plotly_layout(
+            title="Distribución de Drawdowns Actuales",
+            xaxis_title="Drawdown Actual (%)",
+            yaxis_title="Número de Acciones",
+            height=450,
+            showlegend=False
+        ))
         st.plotly_chart(fig9, use_container_width=True)
     
     # Tabla resumen completa
@@ -1047,25 +1032,23 @@ else:
                 hovertemplate=f'<b>{ticker}</b><br>%{{x|%Y-%m-%d}}<br>DD: %{{y:.2f}}%<extra></extra>'
             ))
         
-        fig10.update_layout(
-            **get_plotly_layout(
-                title="Comparación de Drawdowns Históricos",
-                xaxis_title="Fecha",
-                yaxis_title="Drawdown (%)",
-                height=600,
-                legend=dict(
-                    orientation="v",
-                    yanchor="top",
-                    y=0.98,
-                    xanchor="left",
-                    x=0.01,
-                    bgcolor="rgba(20,24,36,0.9)",
-                    bordercolor="#2d3344",
-                    borderwidth=2,
-                    font=dict(size=11)
-                )
+        fig10.update_layout(**get_plotly_layout(
+            title="Comparación de Drawdowns Históricos",
+            xaxis_title="Fecha",
+            yaxis_title="Drawdown (%)",
+            height=600,
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=0.98,
+                xanchor="left",
+                x=0.01,
+                bgcolor="rgba(20,24,36,0.9)",
+                bordercolor="#2d3344",
+                borderwidth=2,
+                font=dict(size=11)
             )
-        )
+        ))
         st.plotly_chart(fig10, use_container_width=True)
         
         # Tabla comparativa de métricas
@@ -1116,14 +1099,13 @@ else:
                 )
             ])
             
-            fig11.update_layout(
-                **plotly_theme['layout'],
+            fig11.update_layout(**get_plotly_layout(
                 title="Max Drawdown por Acción",
                 xaxis_title="",
                 yaxis_title="Max Drawdown (%)",
                 height=450,
                 showlegend=False
-            )
+            ))
             st.plotly_chart(fig11, use_container_width=True)
         
         with col2:
@@ -1140,14 +1122,13 @@ else:
                 )
             ])
             
-            fig12.update_layout(
-                **plotly_theme['layout'],
+            fig12.update_layout(**get_plotly_layout(
                 title="Drawdown Actual por Acción",
                 xaxis_title="",
                 yaxis_title="Drawdown Actual (%)",
                 height=450,
                 showlegend=False
-            )
+            ))
             st.plotly_chart(fig12, use_container_width=True)
     else:
         st.warning("⚠️ Por favor, selecciona al menos una acción para realizar la comparativa")
@@ -1165,8 +1146,14 @@ st.markdown(f"""
         <p style='color: #a0a6b8; font-size: 1rem; line-height: 1.6; margin-bottom: 0.5rem;'>
             El <strong style='color: #ef4444;'>drawdown</strong> representa la caída porcentual desde el máximo histórico del precio.
         </p>
-        <p style='color: #a0a6b8; font-size: 0.95rem; line-height: 1.6;'>
+        <p style='color: #a0a6b8; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;'>
             📅 Datos actualizados hasta: <strong style='color: #3b82f6;'>{df.index[-1].strftime('%d de %B de %Y')}</strong>
         </p>
+        <div style='padding-top: 1.5rem; border-top: 1px solid #2d3344;'>
+            <p style='color: #6b7280; font-size: 0.9rem; margin: 0;'>
+                Made by <a href='https://bquantfinance.com' target='_blank' style='color: #3b82f6; text-decoration: none; font-weight: 600;'>@Gsnchez</a> | 
+                <a href='https://bquantfinance.com' target='_blank' style='color: #3b82f6; text-decoration: none; font-weight: 600;'>bquantfinance.com</a>
+            </p>
+        </div>
     </div>
 """, unsafe_allow_html=True)
