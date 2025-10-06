@@ -1872,7 +1872,7 @@ else:
             st.dataframe(
                 time_comparison_table.set_index('Ticker').style.background_gradient(
                     cmap='RdYlGn_r',
-                    subset=['Promedio (días)', 'Mediana (días)', 'Máximo (días)']
+                    subset=['Promedio (días)', 'Mediana (días)']
                 ),
                 use_container_width=True
             )
