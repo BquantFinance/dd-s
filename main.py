@@ -1000,8 +1000,6 @@ elif analysis_type == "🌐 Análisis Agregado":
     
     with col2:
         st.markdown("**Atajos rápidos:**")
-        if st.button("📊 Top 30 por capitalización", key="top30"):
-            heatmap_tickers = valid_tickers[:min(30, len(valid_tickers))]
         if st.button("🔴 Top 20 peor Max DD", key="worst20"):
             worst_20 = max_dd_all.nsmallest(20).index.tolist()
             heatmap_tickers = worst_20
