@@ -930,58 +930,30 @@ if analysis_type == "📊 Análisis Individual":
             
             st.plotly_chart(fig_time_high, use_container_width=True)
             
-            # Estadísticas
+            # Estadísticas en tabla
             days_list = [h['days'] for h in time_to_highs]
             
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Tiempo Medio", f"{np.mean(days_list):.0f} días")
-            col2.metric("Tiempo Mediano", f"{np.median(days_list):.0f} días")
-            col3.metric("Tiempo Mínimo", f"{min(days_list)} días")
-            col4.metric("Tiempo Máximo", f"{max(days_list):,} días")
+            stats_table = pd.DataFrame([{
+                'Métrica': 'Tiempo Medio',
+                'Valor': f"{np.mean(days_list):.0f} días"
+            }, {
+                'Métrica': 'Tiempo Mediano',
+                'Valor': f"{np.median(days_list):.0f} días"
+            }, {
+                'Métrica': 'Tiempo Mínimo',
+                'Valor': f"{min(days_list)} días"
+            }, {
+                'Métrica': 'Tiempo Máximo',
+                'Valor': f"{max(days_list):,} días"
+            }, {
+                'Métrica': 'Desviación Estándar',
+                'Valor': f"{np.std(days_list):.0f} días"
+            }, {
+                'Métrica': 'Total de Nuevos Máximos',
+                'Valor': f"{len(days_list)}"
+            }])
             
-            # Distribución
-            st.markdown("#### Distribución del Tiempo hasta Nuevo Máximo")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig_time_hist = go.Figure(data=[go.Histogram(
-                    x=days_list,
-                    nbinsx=20,
-                    marker=dict(
-                        color='#3b82f6',
-                        line=dict(color='#2563eb', width=1.5)
-                    ),
-                    hovertemplate='Días: %{x}<br>Frecuencia: %{y}<extra></extra>'
-                )])
-                
-                fig_time_hist.update_layout(**get_plotly_layout(
-                    title="Histograma",
-                    xaxis_title="Días hasta Nuevo Máximo",
-                    yaxis_title="Frecuencia",
-                    height=350,
-                    showlegend=False
-                ))
-                
-                st.plotly_chart(fig_time_hist, use_container_width=True)
-            
-            with col2:
-                fig_time_box = go.Figure(data=[go.Box(
-                    x=days_list,
-                    marker=dict(color='#3b82f6'),
-                    line=dict(color='#2563eb', width=2),
-                    hovertemplate='Días: %{x}<extra></extra>',
-                    boxmean='sd'
-                )])
-                
-                fig_time_box.update_layout(**get_plotly_layout(
-                    title="Box Plot",
-                    xaxis_title="Días hasta Nuevo Máximo",
-                    height=350,
-                    showlegend=False
-                ))
-                
-                st.plotly_chart(fig_time_box, use_container_width=True)
+            st.dataframe(stats_table, hide_index=True, use_container_width=True)
         else:
             st.info("No hay suficientes datos para calcular el tiempo hasta nuevo máximo.")
         
@@ -1072,90 +1044,126 @@ elif analysis_type == "🌐 Análisis Agregado":
     # Heatmaps anuales
     st.markdown("### 🔥 Mapas de Calor - Drawdowns Anuales")
     
-    df_filtered_copy = df_filtered.copy()
-    df_filtered_copy['Year'] = df_filtered_copy.index.year
-    years = sorted(df_filtered_copy['Year'].unique())
+    # Selector de acciones para heatmaps
+    st.markdown("#### Selecciona acciones para los mapas de calor:")
     
-    yearly_max_dd = []
-    yearly_avg_dd = []
+    col1, col2 = st.columns([3, 1])
     
-    for year in years:
-        year_data = df_filtered_copy[df_filtered_copy['Year'] == year]
-        year_dd = {}
-        for ticker in valid_tickers[:45]:  # Primeras 45 para mejor visualización
-            ticker_year_data = year_data[ticker].dropna()
-            if len(ticker_year_data) > 0:
-                dd_year = calculate_drawdown(ticker_year_data)
-                year_dd[ticker] = {'max': dd_year.min(), 'avg': dd_year.mean()}
-        
-        if year_dd:
-            yearly_max_dd.append({ticker: metrics['max'] for ticker, metrics in year_dd.items()})
-            yearly_avg_dd.append({ticker: metrics['avg'] for ticker, metrics in year_dd.items()})
+    with col1:
+        heatmap_tickers = st.multiselect(
+            "Escoge hasta 50 acciones para visualizar:",
+            valid_tickers,
+            default=valid_tickers[:min(30, len(valid_tickers))],
+            max_selections=50,
+            key="heatmap_selector"
+        )
     
-    if yearly_max_dd:
-        max_dd_matrix = pd.DataFrame(yearly_max_dd, index=years).T
-        avg_dd_matrix = pd.DataFrame(yearly_avg_dd, index=years).T
+    with col2:
+        st.markdown("**Atajos rápidos:**")
+        if st.button("📊 Top 30 por capitalización", key="top30"):
+            # Usar las primeras 30 como proxy de capitalización
+            heatmap_tickers = valid_tickers[:min(30, len(valid_tickers))]
+        if st.button("🔴 Top 20 peor Max DD", key="worst20"):
+            # Seleccionar las 20 con peor max drawdown
+            worst_20 = max_dd_all.nsmallest(20).index.tolist()
+            heatmap_tickers = worst_20
+        if st.button("🎲 Random 25", key="random25"):
+            # Selección aleatoria
+            import random
+            heatmap_tickers = random.sample(valid_tickers, min(25, len(valid_tickers)))
+    
+    if len(heatmap_tickers) >= 2:
+        df_filtered_copy = df_filtered.copy()
+        df_filtered_copy['Year'] = df_filtered_copy.index.year
+        years = sorted(df_filtered_copy['Year'].unique())
         
-        col1, col2 = st.columns(2)
+        yearly_max_dd = []
+        yearly_avg_dd = []
         
-        # Configurar matplotlib para modo oscuro
-        plt.style.use('dark_background')
+        with st.spinner(f"⏳ Calculando drawdowns anuales para {len(heatmap_tickers)} acciones..."):
+            for year in years:
+                year_data = df_filtered_copy[df_filtered_copy['Year'] == year]
+                year_dd = {}
+                for ticker in heatmap_tickers:
+                    ticker_year_data = year_data[ticker].dropna()
+                    if len(ticker_year_data) > 0:
+                        dd_year = calculate_drawdown(ticker_year_data)
+                        year_dd[ticker] = {'max': dd_year.min(), 'avg': dd_year.mean()}
+                
+                if year_dd:
+                    yearly_max_dd.append({ticker: metrics['max'] for ticker, metrics in year_dd.items()})
+                    yearly_avg_dd.append({ticker: metrics['avg'] for ticker, metrics in year_dd.items()})
         
-        with col1:
-            fig6, ax = plt.subplots(figsize=(12, 10))
-            fig6.patch.set_facecolor('#141824')
-            ax.set_facecolor('#141824')
+        if yearly_max_dd:
+            max_dd_matrix = pd.DataFrame(yearly_max_dd, index=years).T
+            avg_dd_matrix = pd.DataFrame(yearly_avg_dd, index=years).T
             
-            sns.heatmap(
-                max_dd_matrix, 
-                cmap='RdYlGn', 
-                linewidth=0.5, 
-                annot=True, 
-                fmt='.1f', 
-                ax=ax, 
-                center=0,
-                cbar_kws={'label': 'Drawdown (%)'},
-                vmin=-50,
-                vmax=0
-            )
+            col1, col2 = st.columns(2)
             
-            ax.set_title("Drawdown Máximo Anual (%)", fontsize=16, fontweight='bold', 
-                        color='#f0f0f0', pad=20)
-            ax.set_xlabel("Año", fontsize=12, color='#a0a6b8', labelpad=10)
-            ax.set_ylabel("Ticker", fontsize=12, color='#a0a6b8', labelpad=10)
-            plt.xticks(color='#a0a6b8', fontsize=9)
-            plt.yticks(color='#a0a6b8', fontsize=9)
-            plt.tight_layout()
-            st.pyplot(fig6)
-        
-        with col2:
-            fig7, ax = plt.subplots(figsize=(12, 10))
-            fig7.patch.set_facecolor('#141824')
-            ax.set_facecolor('#141824')
+            # Configurar matplotlib para modo oscuro
+            plt.style.use('dark_background')
             
-            sns.heatmap(
-                avg_dd_matrix, 
-                cmap='RdYlGn', 
-                linewidth=0.5, 
-                annot=True, 
-                fmt='.1f', 
-                ax=ax, 
-                center=0,
-                cbar_kws={'label': 'Drawdown (%)'},
-                vmin=-25,
-                vmax=0
-            )
+            with col1:
+                fig6, ax = plt.subplots(figsize=(12, max(10, len(heatmap_tickers) * 0.4)))
+                fig6.patch.set_facecolor('#141824')
+                ax.set_facecolor('#141824')
+                
+                sns.heatmap(
+                    max_dd_matrix, 
+                    cmap='RdYlGn', 
+                    linewidth=0.5, 
+                    annot=True, 
+                    fmt='.1f', 
+                    ax=ax, 
+                    center=0,
+                    cbar_kws={'label': 'Drawdown (%)'},
+                    vmin=-50,
+                    vmax=0,
+                    annot_kws={'size': 8}
+                )
+                
+                ax.set_title("Drawdown Máximo Anual (%)", fontsize=16, fontweight='bold', 
+                            color='#f0f0f0', pad=20)
+                ax.set_xlabel("Año", fontsize=12, color='#a0a6b8', labelpad=10)
+                ax.set_ylabel("Ticker", fontsize=12, color='#a0a6b8', labelpad=10)
+                plt.xticks(color='#a0a6b8', fontsize=9)
+                plt.yticks(color='#a0a6b8', fontsize=8)
+                plt.tight_layout()
+                st.pyplot(fig6)
             
-            ax.set_title("Drawdown Promedio Anual (%)", fontsize=16, fontweight='bold', 
-                        color='#f0f0f0', pad=20)
-            ax.set_xlabel("Año", fontsize=12, color='#a0a6b8', labelpad=10)
-            ax.set_ylabel("Ticker", fontsize=12, color='#a0a6b8', labelpad=10)
-            plt.xticks(color='#a0a6b8', fontsize=9)
-            plt.yticks(color='#a0a6b8', fontsize=9)
-            plt.tight_layout()
-            st.pyplot(fig7)
-        
-        plt.style.use('default')
+            with col2:
+                fig7, ax = plt.subplots(figsize=(12, max(10, len(heatmap_tickers) * 0.4)))
+                fig7.patch.set_facecolor('#141824')
+                ax.set_facecolor('#141824')
+                
+                sns.heatmap(
+                    avg_dd_matrix, 
+                    cmap='RdYlGn', 
+                    linewidth=0.5, 
+                    annot=True, 
+                    fmt='.1f', 
+                    ax=ax, 
+                    center=0,
+                    cbar_kws={'label': 'Drawdown (%)'},
+                    vmin=-25,
+                    vmax=0,
+                    annot_kws={'size': 8}
+                )
+                
+                ax.set_title("Drawdown Promedio Anual (%)", fontsize=16, fontweight='bold', 
+                            color='#f0f0f0', pad=20)
+                ax.set_xlabel("Año", fontsize=12, color='#a0a6b8', labelpad=10)
+                ax.set_ylabel("Ticker", fontsize=12, color='#a0a6b8', labelpad=10)
+                plt.xticks(color='#a0a6b8', fontsize=9)
+                plt.yticks(color='#a0a6b8', fontsize=8)
+                plt.tight_layout()
+                st.pyplot(fig7)
+            
+            plt.style.use('default')
+        else:
+            st.warning("No hay suficientes datos para generar los mapas de calor con las acciones seleccionadas.")
+    else:
+        st.info("Selecciona al menos 2 acciones para generar los mapas de calor.")
     
     # Distribuciones del mercado
     st.markdown("### 📊 Distribución de Drawdowns en el Mercado")
