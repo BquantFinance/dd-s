@@ -556,8 +556,9 @@ def drawdown_metrics(dd):
     }
 
 # ==================== TEMA PLOTLY ====================
-plotly_theme = {
-    'layout': {
+def get_plotly_layout(**kwargs):
+    """Retorna el layout de Plotly con tema oscuro personalizado"""
+    base_layout = {
         'paper_bgcolor': 'rgba(0,0,0,0)',
         'plot_bgcolor': 'rgba(20,24,36,0.6)',
         'font': {'color': '#f0f0f0', 'family': 'Inter, sans-serif', 'size': 12},
@@ -583,7 +584,8 @@ plotly_theme = {
             'bordercolor': '#2d3344'
         }
     }
-}
+    base_layout.update(kwargs)
+    return base_layout
 
 # ==================== ANÁLISIS INDIVIDUAL ====================
 if analysis_type == "📊 Análisis Individual":
@@ -657,12 +659,13 @@ if analysis_type == "📊 Análisis Individual":
                   annotation_position="right", annotation_font_size=12)
     
     fig.update_layout(
-        **plotly_theme['layout'],
-        title=f"Drawdown Histórico - {selected_ticker}",
-        xaxis_title="Fecha",
-        yaxis_title="Drawdown (%)",
-        height=550,
-        showlegend=False
+        **get_plotly_layout(
+            title=f"Drawdown Histórico - {selected_ticker}",
+            xaxis_title="Fecha",
+            yaxis_title="Drawdown (%)",
+            height=550,
+            showlegend=False
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
     
@@ -686,20 +689,21 @@ if analysis_type == "📊 Análisis Individual":
     ))
     
     fig2.update_layout(
-        **plotly_theme['layout'],
-        title=f"Evolución del Precio - {selected_ticker}",
-        xaxis_title="Fecha",
-        yaxis_title="Precio ($)",
-        height=500,
-        legend=dict(
-            orientation="h", 
-            yanchor="bottom", 
-            y=1.02, 
-            xanchor="right", 
-            x=1,
-            bgcolor="rgba(20,24,36,0.8)",
-            bordercolor="#2d3344",
-            borderwidth=2
+        **get_plotly_layout(
+            title=f"Evolución del Precio - {selected_ticker}",
+            xaxis_title="Fecha",
+            yaxis_title="Precio ($)",
+            height=500,
+            legend=dict(
+                orientation="h", 
+                yanchor="bottom", 
+                y=1.02, 
+                xanchor="right", 
+                x=1,
+                bgcolor="rgba(20,24,36,0.8)",
+                bordercolor="#2d3344",
+                borderwidth=2
+            )
         )
     )
     st.plotly_chart(fig2, use_container_width=True)
@@ -720,12 +724,13 @@ if analysis_type == "📊 Análisis Individual":
         )])
         
         fig3.update_layout(
-            **plotly_theme['layout'],
-            title="Histograma de Drawdowns",
-            xaxis_title="Drawdown (%)",
-            yaxis_title="Frecuencia",
-            height=400,
-            showlegend=False
+            **get_plotly_layout(
+                title="Histograma de Drawdowns",
+                xaxis_title="Drawdown (%)",
+                yaxis_title="Frecuencia",
+                height=400,
+                showlegend=False
+            )
         )
         st.plotly_chart(fig3, use_container_width=True)
     
@@ -738,11 +743,12 @@ if analysis_type == "📊 Análisis Individual":
         )])
         
         fig4.update_layout(
-            **plotly_theme['layout'],
-            title="Box Plot de Drawdowns",
-            yaxis_title="Drawdown (%)",
-            height=400,
-            showlegend=False
+            **get_plotly_layout(
+                title="Box Plot de Drawdowns",
+                yaxis_title="Drawdown (%)",
+                height=400,
+                showlegend=False
+            )
         )
         st.plotly_chart(fig4, use_container_width=True)
 
@@ -819,12 +825,13 @@ elif analysis_type == "🌐 Análisis Agregado":
     ))
     
     fig5.update_layout(
-        **plotly_theme['layout'],
-        title="Top 10 Mayores Drawdowns Máximos del Período",
-        xaxis_title="Max Drawdown (%)",
-        yaxis_title="",
-        height=500,
-        showlegend=False
+        **get_plotly_layout(
+            title="Top 10 Mayores Drawdowns Máximos del Período",
+            xaxis_title="Max Drawdown (%)",
+            yaxis_title="",
+            height=500,
+            showlegend=False
+        )
     )
     st.plotly_chart(fig5, use_container_width=True)
     
@@ -933,12 +940,13 @@ elif analysis_type == "🌐 Análisis Agregado":
         )])
         
         fig8.update_layout(
-            **plotly_theme['layout'],
-            title="Distribución de Max Drawdowns",
-            xaxis_title="Max Drawdown (%)",
-            yaxis_title="Número de Acciones",
-            height=450,
-            showlegend=False
+            **get_plotly_layout(
+                title="Distribución de Max Drawdowns",
+                xaxis_title="Max Drawdown (%)",
+                yaxis_title="Número de Acciones",
+                height=450,
+                showlegend=False
+            )
         )
         st.plotly_chart(fig8, use_container_width=True)
     
@@ -954,12 +962,13 @@ elif analysis_type == "🌐 Análisis Agregado":
         )])
         
         fig9.update_layout(
-            **plotly_theme['layout'],
-            title="Distribución de Drawdowns Actuales",
-            xaxis_title="Drawdown Actual (%)",
-            yaxis_title="Número de Acciones",
-            height=450,
-            showlegend=False
+            **get_plotly_layout(
+                title="Distribución de Drawdowns Actuales",
+                xaxis_title="Drawdown Actual (%)",
+                yaxis_title="Número de Acciones",
+                height=450,
+                showlegend=False
+            )
         )
         st.plotly_chart(fig9, use_container_width=True)
     
@@ -1039,21 +1048,22 @@ else:
             ))
         
         fig10.update_layout(
-            **plotly_theme['layout'],
-            title="Comparación de Drawdowns Históricos",
-            xaxis_title="Fecha",
-            yaxis_title="Drawdown (%)",
-            height=600,
-            legend=dict(
-                orientation="v",
-                yanchor="top",
-                y=0.98,
-                xanchor="left",
-                x=0.01,
-                bgcolor="rgba(20,24,36,0.9)",
-                bordercolor="#2d3344",
-                borderwidth=2,
-                font=dict(size=11)
+            **get_plotly_layout(
+                title="Comparación de Drawdowns Históricos",
+                xaxis_title="Fecha",
+                yaxis_title="Drawdown (%)",
+                height=600,
+                legend=dict(
+                    orientation="v",
+                    yanchor="top",
+                    y=0.98,
+                    xanchor="left",
+                    x=0.01,
+                    bgcolor="rgba(20,24,36,0.9)",
+                    bordercolor="#2d3344",
+                    borderwidth=2,
+                    font=dict(size=11)
+                )
             )
         )
         st.plotly_chart(fig10, use_container_width=True)
